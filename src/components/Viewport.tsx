@@ -12,6 +12,8 @@ export function Viewport({
   activeMessage,
   focus,
   onSelectWarning,
+  selectionIds,
+  onPick,
 }: {
   layout: Layout;
   config: CabinetConfig;
@@ -20,6 +22,9 @@ export function Viewport({
   activeMessage?: string;
   focus: ActiveFocus | null;
   onSelectWarning: (w: Warning) => void;
+  /** Parts of the thing the user clicked, shown in blue. */
+  selectionIds: string[];
+  onPick: (partId: string | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true });
@@ -47,10 +52,20 @@ export function Viewport({
     rendererRef.current?.setHighlight(highlightKey ? highlightKey.split('|') : []);
   }, [highlightKey, layout, rendererRef]);
 
-  // On each new click, make the highlighted parts visible: hide doors for interior problems,
-  // show (closed) doors for door problems.
   useEffect(() => {
-    if (!focus) return;
+    const r = rendererRef.current;
+    if (r) r.onPick = onPick;
+  }, [onPick, rendererRef]);
+
+  const selectionKey = selectionIds.join('|');
+  useEffect(() => {
+    rendererRef.current?.setSelection(selectionKey ? selectionKey.split('|') : []);
+  }, [selectionKey, layout, rendererRef]);
+
+  // On each new warning click, make the highlighted parts visible: hide doors for interior
+  // problems, show (closed) doors for door problems. A 3D pick is already visible, so leave it.
+  useEffect(() => {
+    if (!focus || focus.tone !== 'warning') return;
     if (focus.tab === 'interior') setView((v) => ({ ...v, showFronts: false }));
     if (focus.tab === 'doors') setView((v) => ({ ...v, showFronts: true, doorsOpen: false }));
   }, [focus?.nonce]);

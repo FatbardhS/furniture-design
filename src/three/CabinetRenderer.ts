@@ -49,6 +49,14 @@ export class CabinetRenderer {
   /** Parts lit up red because the user clicked a warning about them. */
   private highlighted = new Set<string>();
   private highlightMat = new THREE.MeshStandardMaterial({ color: '#f87171', emissive: '#dc2626', emissiveIntensity: 0.5, roughness: 0.6 });
+  /** Parts the user picked by clicking them; shown in blue (warnings win if both apply). */
+  private selected = new Set<string>();
+  private selectMat = new THREE.MeshStandardMaterial({ color: '#93c5fd', emissive: '#2563eb', emissiveIntensity: 0.35, roughness: 0.5 });
+  private raycaster = new THREE.Raycaster();
+  private events = new AbortController();
+  private pointerDown: { x: number; y: number; t: number } | null = null;
+  /** Called with the clicked part / fixture id, or null for a click on empty space. */
+  onPick: ((partId: string | null) => void) | null = null;
   private geometries: THREE.BufferGeometry[] = [];
   private view: ViewState = { doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true };
   private clock = new THREE.Clock();
@@ -98,6 +106,26 @@ export class CabinetRenderer {
     this.controls.minDistance = 0.4;
     this.controls.maxDistance = 15;
     this.controls.screenSpacePanning = true;
+
+    // A short click without dragging selects; anything longer is an orbit / pan gesture.
+    const canvas = this.renderer.domElement;
+    const signal = this.events.signal;
+    canvas.addEventListener('pointerdown', (e) => (this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() }), { signal });
+    canvas.addEventListener(
+      'pointerup',
+      (e) => {
+        const d = this.pointerDown;
+        this.pointerDown = null;
+        if (!d || e.button !== 0) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 500) return;
+        this.onPick?.(this.pick(e));
+      },
+      { signal },
+    );
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.buttons) return;
+      canvas.style.cursor = this.pick(e) ? 'pointer' : '';
+    }, { signal });
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -149,6 +177,31 @@ export class CabinetRenderer {
     this.applyHighlight();
   }
 
+  /** Show these parts / fixtures as selected (empty to clear). */
+  setSelection(ids: string[]) {
+    this.selected = new Set(ids);
+    this.applyHighlight();
+  }
+
+  /** Id of the nearest visible part or fixture under the pointer. */
+  private pick(e: PointerEvent): string | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    for (const hit of this.raycaster.intersectObject(this.root, true)) {
+      if (!(hit.object instanceof THREE.Mesh)) continue;
+      let visible = true;
+      let owner: THREE.Object3D | null = null;
+      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+        if (!o.visible) visible = false;
+        if (!owner && o.userData.partId !== undefined) owner = o;
+      }
+      // Raycasting ignores `visible`, so skip hits on hidden doors.
+      if (visible && owner) return owner.userData.partId;
+    }
+    return null;
+  }
+
   resetCamera() {
     const [w, h, d] = this.lastSize.map((v) => v * MM);
     // Fit both the vertical and horizontal field of view, with margin for labels and the 3/4 angle.
@@ -174,6 +227,8 @@ export class CabinetRenderer {
     this.clear();
     this.materials.forEach((m) => m.dispose());
     this.highlightMat.dispose();
+    this.selectMat.dispose();
+    this.events.abort();
     this.controls.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -363,11 +418,12 @@ export class CabinetRenderer {
       if (!(o instanceof THREE.Mesh)) return;
       let owner: THREE.Object3D | null = o;
       while (owner && owner.userData.partId === undefined) owner = owner.parent;
-      const on = !!owner && this.highlighted.has(owner.userData.partId);
-      if (on && !o.userData.baseMaterial) {
-        o.userData.baseMaterial = o.material;
-        o.material = this.highlightMat;
-      } else if (!on && o.userData.baseMaterial) {
+      const id = owner?.userData.partId;
+      const target = this.highlighted.has(id) ? this.highlightMat : this.selected.has(id) ? this.selectMat : null;
+      if (target) {
+        o.userData.baseMaterial ??= o.material;
+        o.material = target;
+      } else if (o.userData.baseMaterial) {
         o.material = o.userData.baseMaterial;
         delete o.userData.baseMaterial;
       }

@@ -4,6 +4,7 @@ import { defaultConfig, defaultPricing } from './catalog';
 import { applySectionFit, distributeShelves, placeNewItem } from './interior';
 import { buildLayout, hingesForDoor } from './layout';
 import { computeQuote } from './pricing';
+import { describePart, selectionFocus } from './selection';
 import type { CabinetConfig } from './types';
 
 const box = (over: Partial<CabinetConfig> = {}): CabinetConfig => ({
@@ -172,5 +173,32 @@ describe('pricing', () => {
     expect(q.laborSubtotal).toBe(100);
     expect(q.net).toBeCloseTo(q.materialSubtotal + q.hardwareSubtotal + 150, 2);
     expect(q.grandTotal).toBeCloseTo(q.net * 1.2, 2);
+  });
+});
+
+describe('3D selection', () => {
+  it('maps clicked parts back to the item, door or panel they belong to', () => {
+    const cfg = box({
+      doorType: 'hinged',
+      doorLayout: 'perColumn',
+      columns: [
+        { id: 'c0', items: [{ id: 's1', type: 'shelf', y: 400 }, { id: 'd1', type: 'drawer', y: 0, height: 200 }], doors: { count: 1, hinge: 'left', split: null } },
+        { id: 'c1', items: [{ id: 'r1', type: 'rod', y: 800 }], doors: { count: 2, hinge: 'left', split: null } },
+      ],
+    });
+    const layout = buildLayout(cfg);
+    // Any of a drawer's six parts selects the whole drawer.
+    const drawer = describePart('dside-d1-1', cfg, layout)!;
+    expect(drawer).toMatchObject({ kind: 'item', column: 0, item: { id: 'd1' } });
+    expect(drawer.partIds).toHaveLength(6);
+    expect(selectionFocus(drawer, cfg)).toEqual({ tab: 'interior', column: 0, itemIds: ['d1'] });
+    expect(describePart('rod-r1', cfg, layout)).toMatchObject({ kind: 'item', column: 1 });
+    // Door 1 is the first of section 2's pair.
+    const door = describePart('door-1', cfg, layout)!;
+    expect(door).toMatchObject({ kind: 'door', column: 1 });
+    expect(selectionFocus(door, cfg)).toEqual({ tab: 'doors', column: 1 });
+    expect(describePart('plinth', cfg, layout)).toBeNull(); // no plinth on this box
+    expect(selectionFocus(describePart('side-1', cfg, layout)!, cfg)).toEqual({ tab: 'size', field: undefined });
+    expect(describePart('shelf-gone', cfg, layout)).toBeNull();
   });
 });

@@ -96,7 +96,7 @@ export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocu
               onClick={() => setActive(i)}
               className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition ${
                 i === ci ? 'border-accent-500 bg-accent-50 text-accent-700' : 'border-stone-200 text-stone-500 hover:border-stone-300'
-              } ${focus?.tab === 'interior' && focus.column === i ? 'ring-2 ring-red-400' : ''}`}
+              } ${focus?.tab === 'interior' && focus.column === i ? (focus.tone === 'select' ? 'ring-2 ring-blue-400' : 'ring-2 ring-red-400') : ''}`}
             >
               {i + 1}
               <span className="ml-1 font-normal text-stone-400">· {col.items.length}</span>
@@ -138,7 +138,7 @@ export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocu
         {sortItems(column.items)
           .reverse()
           .map((it) => (
-            <Flag key={it.id} on={!!focus?.itemIds?.includes(it.id)} nonce={focus?.nonce}>
+            <Flag key={it.id} on={!!focus?.itemIds?.includes(it.id)} nonce={focus?.nonce} tone={focus?.tone}>
             <div className="rounded-lg border border-stone-200 bg-white p-2.5">
               <div className="mb-2 flex items-center gap-2">
                 <Icon name={ITEM_META[it.type].icon} className="h-4 w-4 text-stone-500" />

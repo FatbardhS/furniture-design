@@ -257,13 +257,27 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
  * Outlines its content in red and scrolls it into view while `on` — used to point at the control
  * that fixes a warning the user clicked. `nonce` re-triggers the scroll on repeated clicks.
  */
-export function Flag({ on, nonce, children, className = '' }: { on: boolean; nonce?: number; children: ReactNode; className?: string }) {
+export function Flag({
+  on,
+  nonce,
+  tone = 'warning',
+  children,
+  className = '',
+}: {
+  on: boolean;
+  nonce?: number;
+  /** Red for a warning the user clicked, blue for a part they selected in 3D. */
+  tone?: 'warning' | 'select';
+  children: ReactNode;
+  className?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (on) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [on, nonce]);
+  const ring = tone === 'select' ? 'bg-blue-50/70 ring-2 ring-blue-400 ring-offset-2' : 'bg-red-50/70 ring-2 ring-red-400 ring-offset-2';
   return (
-    <div ref={ref} className={`rounded-lg transition-shadow ${on ? 'bg-red-50/70 ring-2 ring-red-400 ring-offset-2' : ''} ${className}`}>
+    <div ref={ref} className={`rounded-lg transition-shadow ${on ? ring : ''} ${className}`}>
       {children}
     </div>
   );

@@ -44,7 +44,7 @@ export function DoorsPanel({ c, focus }: { c: Configurator; focus: ActiveFocus |
           </Field>
         )}
         {config.doorType !== 'none' && !perColumn && (
-          <Flag on={focus?.field === 'doorCount'} nonce={focus?.nonce}>
+          <Flag on={focus?.field === 'doorCount'} nonce={focus?.nonce} tone={focus?.tone}>
           <Field label="Numri i dyerve">
             <div className="flex items-center gap-2">
               <Button onClick={() => patch({ doorCount: config.doorCount - 1 })} disabled={config.doorCount <= min}>
@@ -151,7 +151,7 @@ function SectionDoors({ c, focus }: { c: Configurator; focus: ActiveFocus | null
       {config.columns.map((col, ci) => {
         const d = columnDoors(col, ci, n, columnWidth);
         return (
-          <Flag key={col.id} on={focus?.tab === 'doors' && focus.column === ci} nonce={focus?.nonce}>
+          <Flag key={col.id} on={focus?.tab === 'doors' && focus.column === ci} nonce={focus?.nonce} tone={focus?.tone}>
           <div className="rounded-lg border border-stone-200 bg-white p-2.5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-stone-700">Seksioni {ci + 1}</span>

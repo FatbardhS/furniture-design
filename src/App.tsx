@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BomPanel, CutListPanel } from './components/BomPanel';
 import { DimensionsPanel } from './components/DimensionsPanel';
 import { DoorsPanel } from './components/DoorsPanel';
@@ -7,9 +7,11 @@ import { Icon } from './components/icons';
 import { InteriorPanel } from './components/InteriorPanel';
 import { PricesPanel } from './components/PricesPanel';
 import { QuotePanel } from './components/QuotePanel';
+import { SelectionEditor } from './components/SelectionEditor';
 import { Button, Segmented, Tabs } from './components/ui';
 import { Viewport } from './components/Viewport';
 import { formatMoney } from './domain/pricing';
+import { describePart, selectionFocus } from './domain/selection';
 import { useConfigurator } from './state/useConfigurator';
 import type { CabinetRenderer } from './three/CabinetRenderer';
 import type { ActiveFocus, Warning } from './domain/types';
@@ -27,9 +29,20 @@ export default function App() {
   // The warning the user clicked. Keyed by message so it clears itself once the problem is fixed.
   const [selected, setSelected] = useState<{ message: string; nonce: number } | null>(null);
   const activeWarning = selected ? c.layout.warnings.find((w) => w.message === selected.message) : undefined;
-  const focus: ActiveFocus | null = activeWarning?.focus && selected ? { ...activeWarning.focus, nonce: selected.nonce } : null;
+
+  // The part the user clicked in 3D. Resolved against the current config, so it vanishes if deleted.
+  const [picked, setPicked] = useState<{ partId: string; nonce: number } | null>(null);
+  const selection = picked ? describePart(picked.partId, c.config, c.layout) : null;
+
+  const focus: ActiveFocus | null =
+    activeWarning?.focus && selected
+      ? { ...activeWarning.focus, nonce: selected.nonce, tone: 'warning' }
+      : selection && picked
+        ? { ...selectionFocus(selection, c.config), nonce: picked.nonce, tone: 'select' }
+        : null;
 
   const selectWarning = (w: Warning) => {
+    setPicked(null);
     if (selected?.message === w.message) {
       setSelected(null);
       return;
@@ -37,6 +50,45 @@ export default function App() {
     setSelected({ message: w.message, nonce: Date.now() });
     if (w.focus) setLeft(w.focus.tab);
   };
+
+  const pickPart = (partId: string | null) => {
+    setSelected(null);
+    if (!partId || partId === picked?.partId) {
+      setPicked(null);
+      return;
+    }
+    setPicked({ partId, nonce: Date.now() });
+    const sel = describePart(partId, c.config, c.layout);
+    if (sel) setLeft(selectionFocus(sel, c.config).tab);
+  };
+
+  // Keyboard: arrows nudge the selected shelf / rod / drawer, Delete removes it, Esc deselects.
+  const keyState = useRef({ selection, c });
+  keyState.current = { selection, c };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('input, select, textarea')) return;
+      const { selection: sel, c: cfg } = keyState.current;
+      if (e.key === 'Escape') {
+        setPicked(null);
+        setSelected(null);
+        return;
+      }
+      if (sel?.kind !== 'item') return;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const step = (e.shiftKey ? 50 : 10) * (e.key === 'ArrowUp' ? 1 : -1);
+        const y = Math.min(Math.round(cfg.layout.interior.height), Math.max(0, sel.item.y + step));
+        cfg.updateItem(sel.column, sel.item.id, { y });
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        cfg.removeItem(sel.column, sel.item.id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const exportPdf = async () => {
     setExporting(true);
@@ -104,8 +156,14 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="order-1 h-[55vh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
-          <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} activeMessage={activeWarning?.message} focus={focus} onSelectWarning={selectWarning} />
+        <main className="relative order-1 h-[55vh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
+          <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} activeMessage={activeWarning?.message} focus={focus} onSelectWarning={selectWarning}
+            selectionIds={selection?.partIds ?? []} onPick={pickPart} />
+          {selection && (
+            <div className="pointer-events-none absolute right-3 top-14 z-10">
+              <SelectionEditor c={c} selection={selection} onClose={() => setPicked(null)} />
+            </div>
+          )}
         </main>
 
         <aside className="order-3 flex flex-col border-t border-stone-200 bg-white lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0">

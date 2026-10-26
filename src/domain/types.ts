@@ -146,6 +146,8 @@ export interface Part {
   size: Vec3;
   grain: Axis;
   motion?: Motion;
+  /** Section the part belongs to, when it belongs to exactly one (per-section doors). */
+  column?: number;
 }
 
 export type Fixture =
@@ -198,4 +200,4 @@ export interface Layout {
 }
 
 /** The warning focus the user is currently looking at; `nonce` changes on every click. */
-export type ActiveFocus = WarningFocus & { nonce: number };
+export type ActiveFocus = WarningFocus & { nonce: number; tone: 'warning' | 'select' };

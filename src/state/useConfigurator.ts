@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { buildBom } from '../domain/bom';
 import { defaultConfig, defaultPricing } from '../domain/catalog';
 import { applySectionFit } from '../domain/interior';
-import { buildLayout } from '../domain/layout';
+import { buildLayout, columnDoors } from '../domain/layout';
 import { computeQuote } from '../domain/pricing';
-import type { CabinetConfig, PricingConfig, Unit } from '../domain/types';
+import type { CabinetConfig, Column, ColumnDoors, InteriorItem, PricingConfig, Unit } from '../domain/types';
 
 const STORAGE_KEY = 'closet-configurator:v1';
 
@@ -12,6 +12,8 @@ interface Saved {
   config: CabinetConfig;
   pricing: PricingConfig;
   unit: Unit;
+  /** Set once units became cm-by-default; older saves stored 'mm' only because it was the default. */
+  unitV?: number;
 }
 
 function load(): Saved | null {
@@ -23,7 +25,7 @@ function load(): Saved | null {
     return {
       config: { ...defaultConfig(), ...saved.config },
       pricing: { ...defaultPricing(), ...saved.pricing },
-      unit: saved.unit === 'cm' ? 'cm' : 'mm',
+      unit: saved.unitV === 2 && saved.unit === 'mm' ? 'mm' : 'cm',
     };
   } catch {
     return null;
@@ -34,11 +36,11 @@ export function useConfigurator() {
   const [initial] = useState(load);
   const [config, setConfig] = useState<CabinetConfig>(initial?.config ?? defaultConfig);
   const [pricing, setPricing] = useState<PricingConfig>(initial?.pricing ?? defaultPricing);
-  const [unit, setUnit] = useState<Unit>(initial?.unit ?? 'mm');
+  const [unit, setUnit] = useState<Unit>(initial?.unit ?? 'cm');
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ config, pricing, unit }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ config, pricing, unit, unitV: 2 }));
     } catch {
       /* storage unavailable — the configurator still works, it just won't remember */
     }
@@ -56,13 +58,21 @@ export function useConfigurator() {
       const refit = 'width' in p || 'sectionFit' in p || 'construction' in p;
       return refit ? applySectionFit(next) : next;
     });
+  const mapColumn = (ci: number, f: (col: Column, cfg: CabinetConfig) => Column) =>
+    setConfig((cfg) => ({ ...cfg, columns: cfg.columns.map((col, i) => (i === ci ? f(col, cfg) : col)) }));
+  const updateItem = (ci: number, id: string, p: Partial<InteriorItem>) =>
+    mapColumn(ci, (col) => ({ ...col, items: col.items.map((it) => (it.id === id ? { ...it, ...p } : it)) }));
+  const removeItem = (ci: number, id: string) => mapColumn(ci, (col) => ({ ...col, items: col.items.filter((it) => it.id !== id) }));
+  const setColumnDoors = (ci: number, p: Partial<ColumnDoors>) =>
+    mapColumn(ci, (col, cfg) => ({ ...col, doors: { ...columnDoors(col, ci, cfg.columns.length, layout.interior.columnWidth), ...p } }));
+
   const patchPricing = (p: Partial<PricingConfig>) => setPricing((c) => ({ ...c, ...p }));
   const reset = () => {
     setConfig(defaultConfig());
     setPricing(defaultPricing());
   };
 
-  return { config, setConfig, patch, pricing, patchPricing, unit, setUnit, layout, bom, quote, reset };
+  return { config, setConfig, patch, updateItem, removeItem, setColumnDoors, pricing, patchPricing, unit, setUnit, layout, bom, quote, reset };
 }
 
 export type Configurator = ReturnType<typeof useConfigurator>;

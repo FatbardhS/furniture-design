@@ -32,13 +32,13 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
           <Field label="Lartësia">
             <LengthInput mm={config.height} unit={unit} min={300} max={2800} onChange={(height) => patch({ height })} />
           </Field>
-          <Flag on={focus?.field === 'depth'} nonce={focus?.nonce}>
+          <Flag on={focus?.field === 'depth'} nonce={focus?.nonce} tone={focus?.tone}>
             <Field label="Thellësia">
               <LengthInput mm={config.depth} unit={unit} min={250} max={900} onChange={(depth) => patch({ depth })} />
             </Field>
           </Flag>
         </div>
-        <Flag on={focus?.field === 'plinth'} nonce={focus?.nonce}>
+        <Flag on={focus?.field === 'plinth'} nonce={focus?.nonce} tone={focus?.tone}>
           <Field label="Lartësia e bazamentit (soklës)" hint="0 = pa bazament">
             <LengthInput mm={config.plinthHeight} unit={unit} min={0} max={250} onChange={(plinthHeight) => patch({ plinthHeight })} />
           </Field>
@@ -57,7 +57,7 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
           />
         </Field>
 
-        <Flag on={focus?.field === 'sections'} nonce={focus?.nonce} className="space-y-3">
+        <Flag on={focus?.field === 'sections'} nonce={focus?.nonce} tone={focus?.tone} className="space-y-3">
         <label className="flex items-center gap-2 text-xs font-medium text-stone-700">
           <input type="checkbox" className="accent-accent-500" checked={fit.enabled} onChange={(e) => setFit({ enabled: e.target.checked })} />
           Ndaji seksionet sipas gjerësisë standarde
@@ -65,7 +65,7 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
 
         {fit.enabled ? (
           <>
-            <Field label="Gjerësia standarde e seksionit" hint="zakonisht 600 – 1200 mm">
+            <Field label="Gjerësia standarde e seksionit" hint={`zakonisht ${fmtLen(600, unit)} – ${fmtLen(1200, unit)}`}>
               <div className="space-y-2">
                 <Segmented
                   value={STANDARD_SECTION_WIDTHS.includes(fit.width) ? fit.width : -1}

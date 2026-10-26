@@ -1,5 +1,6 @@
 import { materialById, SHEET, SLIDE_LENGTHS } from './catalog';
 import { DEFAULT_DRAWER_HEIGHT, itemInterval, sortItems } from './interior';
+import { fmtLen } from './units';
 import type { CabinetConfig, Column, ColumnDoors, Fixture, InteriorItem, Layout, Part, Warning } from './types';
 
 /** Gap between adjacent doors and around overlay doors. */
@@ -23,6 +24,8 @@ const HINGE_HEIGHT_RULES: [number, number][] = [
 const KG_PER_HINGE = 5;
 const SLIDE_SIDE_CLEARANCE = { ballBearing: 12.5, softCloseUndermount: 5 } as const;
 const BAR_LENGTHS = [96, 128, 160, 192, 256, 320];
+/** Warnings speak centimetres, like the rest of the interface. */
+const cm = (mm: number) => fmtLen(mm, 'cm');
 const ITEM_NAMES = { shelf: 'Rafti', rod: 'Shufra varëse', drawer: 'Sirtari' } as const;
 
 export function hingesForDoor(heightMm: number, weightKg: number): number {
@@ -207,7 +210,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       if (lo < 0 || hi > Hi) {
         warnings.push({
           level: 'error',
-          message: `${ITEM_NAMES[it.type]} në ${label} del jashtë hapësirës së brendshme (0–${Math.round(Hi)} mm).`,
+          message: `${ITEM_NAMES[it.type]} në ${label} del jashtë hapësirës së brendshme (0–${cm(Hi)}).`,
           focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
         });
       }
@@ -230,7 +233,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         if (len > 900 && T <= 19) {
           warnings.push({
             level: 'warn',
-            message: `Rafti ${Math.round(len)} mm në ${label} mund të përkulet — shtoni ndarëse ose pllakë më të trashë.`,
+            message: `Rafti ${cm(len)} në ${label} mund të përkulet — shtoni ndarëse ose pllakë më të trashë.`,
             focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
           });
         }
@@ -290,7 +293,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         if (boxH < 80) {
           warnings.push({
             level: 'warn',
-            message: `Sirtari në ${label} është shumë i ulët (${h} mm).`,
+            message: `Sirtari në ${label} është shumë i ulët (${cm(h)}).`,
             focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
           });
         }
@@ -372,7 +375,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
      * One overlay door spanning [x0, x1] × [y0, y1]. The handle goes on the free edge: near the
      * bottom of an upper door, near the top of a lower door, or at a comfortable height otherwise.
      */
-    const addDoor = (x0: number, x1: number, y0: number, y1: number, hingeLeft: boolean, handleAt: 'low' | 'mid' | 'high') => {
+    const addDoor = (x0: number, x1: number, y0: number, y1: number, hingeLeft: boolean, handleAt: 'low' | 'mid' | 'high', column?: number) => {
       const dw = x1 - x0;
       const dh = y1 - y0;
       if (dw < 50 || dh < 50) return;
@@ -398,6 +401,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         size: [dw, dh, T],
         grain: 'y',
         motion: { key, type: 'hinge', pivot: [hingeLeft ? x0 : x1, 0, z - T / 2], dir: hingeLeft ? -1 : 1 },
+        column,
       });
       if (cfg.handleType !== 'none') {
         const len = cfg.handleType === 'bar' ? barLength(Math.min(320, dh * 0.3)) : 0;
@@ -435,11 +439,11 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         }
         for (const [y0, y1, handleAt] of rows) {
           if (d.count === 1) {
-            addDoor(x0, x1, y0, y1, d.hinge === 'left', handleAt);
+            addDoor(x0, x1, y0, y1, d.hinge === 'left', handleAt, ci);
           } else {
             const mid = (x0 + x1) / 2;
-            addDoor(x0, mid - DOOR_GAP / 2, y0, y1, true, handleAt);
-            addDoor(mid + DOOR_GAP / 2, x1, y0, y1, false, handleAt);
+            addDoor(x0, mid - DOOR_GAP / 2, y0, y1, true, handleAt, ci);
+            addDoor(mid + DOOR_GAP / 2, x1, y0, y1, false, handleAt, ci);
           }
         }
         if (badSplit) {
@@ -464,14 +468,14 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     if (doorInfo.width > 650) {
       warnings.push({
         level: 'warn',
-        message: `Dyer deri në ${Math.round(doorInfo.width)} mm të gjera — mbi 600 mm nuk rekomandohet; shtoni dyer.`,
+        message: `Dyer deri në ${cm(doorInfo.width)} të gjera — mbi 60 cm nuk rekomandohet; shtoni dyer.`,
         focus: { tab: 'doors', field: cfg.doorLayout === 'even' ? 'doorCount' : undefined, partIds: doorsWhere((p) => p.width > 650) },
       });
     }
     if (doorInfo.height > 2400) {
       warnings.push({
         level: 'warn',
-        message: `Dyert janë ${Math.round(doorInfo.height)} mm të larta — mund të shtrembërohen; ndajini lart/poshtë.`,
+        message: `Dyert janë ${cm(doorInfo.height)} të larta — mund të shtrembërohen; ndajini lart/poshtë.`,
         focus: { tab: 'doors', partIds: doorsWhere((p) => p.length > 2400) },
       });
     }
@@ -485,7 +489,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     if (dw < 500) {
       warnings.push({
         level: 'warn',
-        message: `Dyert rrëshqitëse janë vetëm ${Math.round(dw)} mm të gjera — përdorni më pak dyer.`,
+        message: `Dyert rrëshqitëse janë vetëm ${cm(dw)} të gjera — përdorni më pak dyer.`,
         focus: { tab: 'doors', field: 'doorCount', partIds: allDoors },
       });
     }
@@ -538,7 +542,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   if (Dc < 250) {
     warnings.unshift({
       level: 'error',
-      message: `Thellësia e korpusit është vetëm ${Math.round(Dc)} mm — rriteni thellësinë.`,
+      message: `Thellësia e korpusit është vetëm ${cm(Dc)} — rriteni thellësinë.`,
       focus: { tab: 'size', field: 'depth', partIds: idsOf('side', 'topBottom') },
     });
   }
@@ -552,7 +556,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   if (cw < 250) {
     warnings.unshift({
       level: 'warn',
-      message: `Seksionet janë vetëm ${Math.round(cw)} mm të gjera — përdorni më pak seksione.`,
+      message: `Seksionet janë vetëm ${cm(cw)} të gjera — përdorni më pak seksione.`,
       focus: { tab: 'size', field: 'sections', partIds: idsOf('divider', 'side') },
     });
   }
