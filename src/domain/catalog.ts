@@ -79,6 +79,7 @@ export function defaultConfig(): CabinetConfig {
       },
     ],
     doorType: 'hinged',
+    doorLayout: 'even',
     doorCount: 3,
     handleType: 'bar',
     handleFinish: 'chrome',

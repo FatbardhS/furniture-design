@@ -34,12 +34,41 @@ describe('layout + BOM', () => {
   it('counts hinges and handles for hinged doors', () => {
     const cfg = box({ doorType: 'hinged', doorCount: 2, hingeType: 'standard', handleType: 'knob' });
     const layout = buildLayout(cfg);
-    expect(layout.doors.hingesEach).toBe(3);
+    expect(layout.doors.hingeTotal).toBe(6);
     const bom = buildBom(cfg, layout, defaultPricing());
     expect(bom.hardware.find((h) => h.id === 'hinge')!.qty).toBe(6);
     expect(bom.hardware.find((h) => h.id === 'handle')!.qty).toBe(2);
     // doors reduce the carcass depth so overall depth stays 500
     expect(layout.interior.depth).toBe(500 - 3 - 20);
+  });
+
+  it('lays out doors per section with pairs and upper/lower splits', () => {
+    const cfg = box({
+      width: 1500,
+      height: 2000,
+      doorType: 'hinged',
+      doorLayout: 'perColumn',
+      columns: [
+        { id: 'a', items: [], doors: { count: 1, hinge: 'right', split: null } },
+        { id: 'b', items: [], doors: { count: 2, hinge: 'left', split: 1500 } },
+        { id: 'c', items: [], doors: { count: 0, hinge: 'left', split: null } },
+      ],
+    });
+    const layout = buildLayout(cfg);
+    const doors = layout.parts.filter((p) => p.category === 'door');
+    // 1 single + 2 pairs (lower and upper) + open section
+    expect(doors).toHaveLength(5);
+    expect(layout.doors.count).toBe(5);
+    const single = doors[0];
+    expect(single.motion).toMatchObject({ type: 'hinge', dir: 1 });
+    // Split doors meet at the split line with a door gap between them.
+    const lower = doors[1];
+    const upper = doors[3];
+    const floorY = cfg.thickness;
+    expect(lower.position[1] + lower.size[1] / 2).toBeCloseTo(floorY + 1500 - 1.5, 5);
+    expect(upper.position[1] - upper.size[1] / 2).toBeCloseTo(floorY + 1500 + 1.5, 5);
+    const bom = buildBom(cfg, layout, defaultPricing());
+    expect(bom.hardware.find((h) => h.id === 'hinge')!.qty).toBe(layout.doors.hingeTotal);
   });
 
   it('builds a drawer box with slides and fits slide length to depth', () => {

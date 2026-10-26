@@ -200,6 +200,12 @@ export class CabinetRenderer {
     mesh.castShadow = part.category !== 'back';
     mesh.receiveShadow = true;
     mesh.userData.category = part.category;
+    if (part.category === 'door' || part.category === 'drawerFront') {
+      // The real 3 mm gaps are too thin to read on screen; a faint outline shows where fronts split.
+      const edges = new THREE.EdgesGeometry(geo);
+      this.geometries.push(edges);
+      mesh.add(new THREE.LineSegments(edges, this.seamMaterial()));
+    }
     return mesh;
   }
 
@@ -316,6 +322,16 @@ export class CabinetRenderer {
     dim(new THREE.Vector3(-W / 2, H + off, D / 2), new THREE.Vector3(W / 2, H + off, D / 2), new THREE.Vector3(0, t, 0), `W ${fmtLen(cfg.width, unit)}`);
     dim(new THREE.Vector3(-W / 2 - off, 0, D / 2), new THREE.Vector3(-W / 2 - off, H, D / 2), new THREE.Vector3(t, 0, 0), `H ${fmtLen(cfg.height, unit)}`);
     dim(new THREE.Vector3(W / 2 + off, H, -D / 2), new THREE.Vector3(W / 2 + off, H, D / 2), new THREE.Vector3(0, t, 0), `D ${fmtLen(cfg.depth, unit)}`);
+  }
+
+  private seamMaterial() {
+    this.usedMaterials.add('seam');
+    let mat = this.materials.get('seam');
+    if (!mat) {
+      mat = new THREE.LineBasicMaterial({ color: '#1c1917', transparent: true, opacity: 0.35 });
+      this.materials.set('seam', mat);
+    }
+    return mat;
   }
 
   private lineMaterial() {

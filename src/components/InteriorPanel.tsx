@@ -22,7 +22,21 @@ export function InteriorPanel({ c }: { c: Configurator }) {
   const Hi = layout.interior.height;
   const T = config.thickness;
 
-  const setColumn = (col: Column) => patch({ columns: config.columns.map((c, i) => (i === ci ? col : c)) });
+  const setColumnAt = (index: number, col: Column) => patch({ columns: config.columns.map((c, i) => (i === index ? col : c)) });
+  const setColumn = (col: Column) => setColumnAt(ci, col);
+
+  const addShelf = (index: number) => {
+    const col = config.columns[index];
+    const shelf = placeNewItem(col, 'shelf', Hi, T);
+    setNotice(shelf ? '' : `No free space for another shelf in column ${index + 1}.`);
+    if (shelf) setColumnAt(index, { ...col, items: [...col.items, shelf] });
+  };
+  /** Removes the most recently added shelf, so + then − is a clean undo. */
+  const removeShelf = (index: number) => {
+    const col = config.columns[index];
+    const last = col.items.findLastIndex((it) => it.type === 'shelf');
+    if (last >= 0) setColumnAt(index, { ...col, items: col.items.filter((_, i) => i !== last) });
+  };
   const updateItem = (id: string, p: Partial<InteriorItem>) =>
     setColumn({ ...column, items: column.items.map((it) => (it.id === id ? { ...it, ...p } : it)) });
 
@@ -45,6 +59,30 @@ export function InteriorPanel({ c }: { c: Configurator }) {
 
   return (
     <>
+      <Section title="Shelves per column">
+        {config.columns.map((col, i) => {
+          const count = col.items.filter((it) => it.type === 'shelf').length;
+          return (
+            <div key={col.id} className="flex items-center gap-2">
+              <button
+                onClick={() => setActive(i)}
+                className={`flex-1 text-left text-xs ${i === ci ? 'font-semibold text-accent-700' : 'text-stone-600 hover:text-stone-900'}`}
+              >
+                Column {i + 1}
+              </button>
+              <Button onClick={() => removeShelf(i)} disabled={count === 0} title="Remove a shelf">
+                <Icon name="minus" className="h-3.5 w-3.5" />
+              </Button>
+              <span className="w-6 text-center text-sm font-semibold tabular-nums">{count}</span>
+              <Button onClick={() => addShelf(i)} title="Add a shelf">
+                <Icon name="plus" className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          );
+        })}
+        {notice && <p className="text-xs text-amber-700">{notice}</p>}
+      </Section>
+
       <Section title="Column">
         <div className="flex flex-wrap gap-1.5">
           {config.columns.map((col, i) => (
@@ -79,7 +117,6 @@ export function InteriorPanel({ c }: { c: Configurator }) {
             )}
           </div>
         </div>
-        {notice && <p className="text-xs text-amber-700">{notice}</p>}
       </Section>
 
       <Section

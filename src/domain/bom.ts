@@ -129,8 +129,8 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
   if (cfg.doorType === 'hinged' && doors) {
     hw.push({
       id: 'hinge',
-      name: `${HINGE_LABELS[cfg.hingeType]} (${layout.doors.hingesEach} per door)`,
-      qty: doors * layout.doors.hingesEach,
+      name: HINGE_LABELS[cfg.hingeType],
+      qty: layout.doors.hingeTotal,
       unit: 'pcs',
       unitPrice: pricing.hinge[cfg.hingeType],
     });

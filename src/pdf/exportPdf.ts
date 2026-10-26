@@ -60,7 +60,9 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
   const doorText =
     config.doorType === 'none'
       ? 'Open (no doors)'
-      : `${layout.doors.count} × ${config.doorType} (${L(layout.doors.width)} × ${L(layout.doors.height)})`;
+      : config.doorType === 'hinged' && config.doorLayout === 'perColumn'
+        ? `${layout.doors.count} × hinged, per section (largest ${L(layout.doors.width)} × ${L(layout.doors.height)})`
+        : `${layout.doors.count} × ${config.doorType} (${L(layout.doors.width)} × ${L(layout.doors.height)})`;
   const specRows: RowInput[] = [
     ['Overall size (W × H × D)', `${L(config.width)} × ${L(config.height)} × ${L(config.depth)}`],
     ['Interior (W × H × D)', `${L(layout.interior.width)} × ${L(layout.interior.height)} × ${L(layout.interior.depth)}`],
@@ -71,7 +73,7 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
     ['Front finish', `${materialById(config.frontFinish.materialId).name} (${config.frontFinish.color})`],
     ['Carcass finish', `${materialById(config.carcassFinish.materialId).name} (${config.carcassFinish.color})`],
     ['Handles', config.handleType === 'none' ? HANDLE_LABELS.none : `${HANDLE_LABELS[config.handleType]}, ${config.handleFinish}`],
-    ...(config.doorType === 'hinged' ? [['Hinges', `${HINGE_LABELS[config.hingeType]} × ${layout.doors.hingesEach}/door`]] : []),
+    ...(config.doorType === 'hinged' ? [['Hinges', `${HINGE_LABELS[config.hingeType]} × ${layout.doors.hingeTotal} total`]] : []),
     ['Drawer slides', SLIDE_LABELS[config.slideType]],
   ];
   autoTable(doc, {

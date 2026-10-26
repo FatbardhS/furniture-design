@@ -1,6 +1,6 @@
 import { materialById, SHEET, SLIDE_LENGTHS } from './catalog';
 import { DEFAULT_DRAWER_HEIGHT, itemInterval, sortItems } from './interior';
-import type { CabinetConfig, Fixture, Layout, Part, Warning } from './types';
+import type { CabinetConfig, Column, ColumnDoors, Fixture, Layout, Part, Warning } from './types';
 
 /** Gap between adjacent doors and around overlay doors. */
 export const DOOR_GAP = 3;
@@ -34,6 +34,14 @@ export function frontAllowance(cfg: CabinetConfig): number {
   if (cfg.doorType === 'hinged') return cfg.thickness + 2;
   if (cfg.doorType === 'sliding') return cfg.thickness * 2 + 16;
   return 0;
+}
+
+/**
+ * Doors for a column in the per-section layout. Columns the user hasn't configured get one door
+ * (two if the column is wider than 600 mm), hinged towards the nearer outside edge.
+ */
+export function columnDoors(col: Column, index: number, columnCount: number, columnWidth: number): ColumnDoors {
+  return col.doors ?? { count: columnWidth > 600 ? 2 : 1, hinge: index < columnCount / 2 ? 'left' : 'right', split: null };
 }
 
 const barLength = (space: number) => [...BAR_LENGTHS].reverse().find((l) => l <= space) ?? BAR_LENGTHS[0];
@@ -302,26 +310,30 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   });
 
   // --- Doors -----------------------------------------------------------------
-  let doorInfo = { count: 0, width: 0, height: 0, weightKg: 0, hingesEach: 0 };
+  let doorInfo = { count: 0, width: 0, height: 0, weightKg: 0, hingeTotal: 0 };
   const density = materialById(cfg.frontFinish.materialId).density;
 
   if (cfg.doorType === 'hinged') {
-    const nd = Math.min(8, Math.max(1, cfg.doorCount));
-    const dh = H - P - 4;
-    const dw = (W - 4 - DOOR_GAP * (nd - 1)) / nd;
-    const weight = (dw * dh * T * 1e-9) * density;
-    const hinges = hingesForDoor(dh, weight);
-    doorInfo = { count: nd, width: dw, height: dh, weightKg: weight, hingesEach: hinges };
-    if (dw > 650) warnings.push({ level: 'warn', message: `Hinged doors are ${Math.round(dw)} mm wide — more than 600 mm is not recommended; add doors.` });
-    if (dh > 2400) warnings.push({ level: 'warn', message: `Doors are ${Math.round(dh)} mm tall — tall doors may warp; consider splitting them.` });
-
     const z = zFront + 2 + T / 2;
-    const y = P + 2 + dh / 2;
-    for (let i = 0; i < nd; i++) {
-      const x = -W / 2 + 2 + dw / 2 + i * (dw + DOOR_GAP);
-      const hingeLeft = nd === 1 || i < nd / 2;
-      const key = `door-${i}`;
-      const pivotX = hingeLeft ? x - dw / 2 : x + dw / 2;
+    const doorBottom = P + 2;
+    const doorTop = H - 2;
+
+    /**
+     * One overlay door spanning [x0, x1] × [y0, y1]. The handle goes on the free edge: near the
+     * bottom of an upper door, near the top of a lower door, or at a comfortable height otherwise.
+     */
+    const addDoor = (x0: number, x1: number, y0: number, y1: number, hingeLeft: boolean, handleAt: 'low' | 'mid' | 'high') => {
+      const dw = x1 - x0;
+      const dh = y1 - y0;
+      if (dw < 50 || dh < 50) return;
+      const x = (x0 + x1) / 2;
+      const y = (y0 + y1) / 2;
+      const weight = dw * dh * T * 1e-9 * density;
+      doorInfo.count++;
+      doorInfo.hingeTotal += hingesForDoor(dh, weight);
+      if (dw * dh > doorInfo.width * doorInfo.height) doorInfo = { ...doorInfo, width: dw, height: dh, weightKg: weight };
+
+      const key = `door-${doorInfo.count - 1}`;
       parts.push({
         id: key,
         name: 'Door',
@@ -335,26 +347,70 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         position: [x, y, z],
         size: [dw, dh, T],
         grain: 'y',
-        motion: { key, type: 'hinge', pivot: [pivotX, 0, z - T / 2], dir: hingeLeft ? -1 : 1 },
+        motion: { key, type: 'hinge', pivot: [hingeLeft ? x0 : x1, 0, z - T / 2], dir: hingeLeft ? -1 : 1 },
       });
       if (cfg.handleType !== 'none') {
-        const freeEdge = hingeLeft ? x + dw / 2 - 40 : x - dw / 2 + 40;
+        const len = cfg.handleType === 'bar' ? barLength(Math.min(320, dh * 0.3)) : 0;
+        const comfy = dh > 1300 ? Math.min(y, 1050) : y;
+        const handleY =
+          handleAt === 'high' ? Math.min(y1 - 80 - len / 2, Math.max(y, 1050)) :
+          handleAt === 'low' ? Math.max(y0 + 80 + len / 2, Math.min(y, 1050)) :
+          comfy;
         fixtures.push({
           kind: 'handle',
           id: `handle-${key}`,
-          position: [freeEdge, dh > 1300 ? Math.min(y, 1050) : y, z + T / 2],
+          position: [hingeLeft ? x1 - 40 : x0 + 40, handleY, z + T / 2],
           orientation: 'vertical',
-          length: cfg.handleType === 'bar' ? barLength(Math.min(320, dh * 0.3)) : 0,
+          length: len,
           motionKey: key,
         });
       }
+    };
+
+    if (cfg.doorLayout === 'perColumn') {
+      cfg.columns.forEach((col, ci) => {
+        const d = columnDoors(col, ci, n, cw);
+        if (!d.count) return;
+        // Outer doors cover the side panel fully; doors meeting at a divider each cover half of it.
+        const x0 = ci === 0 ? -W / 2 + 2 : colLeft(ci) - T / 2 + DOOR_GAP / 2;
+        const x1 = ci === n - 1 ? W / 2 - 2 : colLeft(ci) + cw + T / 2 - DOOR_GAP / 2;
+        const rows: [number, number, 'low' | 'mid' | 'high'][] = [];
+        if (d.split == null) {
+          rows.push([doorBottom, doorTop, 'mid']);
+        } else {
+          if (d.split < 100 || d.split > Hi - 100) {
+            warnings.push({ level: 'warn', message: `Door split in column ${ci + 1} is too close to the top or bottom.` });
+          }
+          const s = floorY + d.split;
+          rows.push([doorBottom, s - DOOR_GAP / 2, 'high'], [s + DOOR_GAP / 2, doorTop, 'low']);
+        }
+        for (const [y0, y1, handleAt] of rows) {
+          if (d.count === 1) {
+            addDoor(x0, x1, y0, y1, d.hinge === 'left', handleAt);
+          } else {
+            const mid = (x0 + x1) / 2;
+            addDoor(x0, mid - DOOR_GAP / 2, y0, y1, true, handleAt);
+            addDoor(mid + DOOR_GAP / 2, x1, y0, y1, false, handleAt);
+          }
+        }
+      });
+    } else {
+      const nd = Math.min(8, Math.max(1, cfg.doorCount));
+      const dw = (W - 4 - DOOR_GAP * (nd - 1)) / nd;
+      for (let i = 0; i < nd; i++) {
+        const x0 = -W / 2 + 2 + i * (dw + DOOR_GAP);
+        addDoor(x0, x0 + dw, doorBottom, doorTop, nd === 1 || i < nd / 2, 'mid');
+      }
     }
+
+    if (doorInfo.width > 650) warnings.push({ level: 'warn', message: `Hinged doors up to ${Math.round(doorInfo.width)} mm wide — more than 600 mm is not recommended; add doors.` });
+    if (doorInfo.height > 2400) warnings.push({ level: 'warn', message: `Doors are ${Math.round(doorInfo.height)} mm tall — tall doors may warp; consider splitting them.` });
   } else if (cfg.doorType === 'sliding') {
     const nd = Math.min(4, Math.max(2, cfg.doorCount));
     const dh = H - P - 4;
     const dw = (W + (nd - 1) * SLIDING_OVERLAP) / nd;
     const weight = (dw * dh * T * 1e-9) * density;
-    doorInfo = { count: nd, width: dw, height: dh, weightKg: weight, hingesEach: 0 };
+    doorInfo = { count: nd, width: dw, height: dh, weightKg: weight, hingeTotal: 0 };
     if (dw < 500) warnings.push({ level: 'warn', message: `Sliding doors are only ${Math.round(dw)} mm wide — use fewer doors.` });
     if (weight > 40) warnings.push({ level: 'warn', message: `Each sliding door weighs ~${weight.toFixed(0)} kg — check the track's load rating.` });
 

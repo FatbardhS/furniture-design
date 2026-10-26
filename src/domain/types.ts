@@ -13,12 +13,26 @@ export interface InteriorItem {
   height?: number;
 }
 
+/** Doors for one column when hinged doors are laid out per section. */
+export interface ColumnDoors {
+  /** 0 = open section, 1 = single door, 2 = pair of doors. */
+  count: 0 | 1 | 2;
+  /** Hinge side of a single door. */
+  hinge: 'left' | 'right';
+  /** Split into upper and lower doors at this height from the interior floor (mm). null = full height. */
+  split: number | null;
+}
+
 export interface Column {
   id: string;
   items: InteriorItem[];
+  /** Only used when doorLayout is 'perColumn'; a default is derived when missing. */
+  doors?: ColumnDoors;
 }
 
 export type DoorType = 'none' | 'hinged' | 'sliding';
+/** Hinged doors spread evenly across the full width, or configured per column. */
+export type DoorLayout = 'even' | 'perColumn';
 export type HandleType = 'bar' | 'knob' | 'none';
 export type HandleFinish = 'chrome' | 'black' | 'brass';
 export type HingeType = 'standard' | 'softClose';
@@ -44,6 +58,7 @@ export interface CabinetConfig {
   plinthHeight: number;
   columns: Column[];
   doorType: DoorType;
+  doorLayout: DoorLayout;
   doorCount: number;
   handleType: HandleType;
   handleFinish: HandleFinish;
@@ -146,5 +161,13 @@ export interface Layout {
     columnWidth: number;
     floorY: number;
   };
-  doors: { count: number; width: number; height: number; weightKg: number; hingesEach: number };
+  doors: {
+    count: number;
+    /** Size and weight of the largest door. */
+    width: number;
+    height: number;
+    weightKg: number;
+    /** Total hinges over all doors (each door's count depends on its own height and weight). */
+    hingeTotal: number;
+  };
 }
