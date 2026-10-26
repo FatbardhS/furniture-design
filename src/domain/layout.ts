@@ -1,6 +1,6 @@
 import { materialById, SHEET, SLIDE_LENGTHS } from './catalog';
 import { DEFAULT_DRAWER_HEIGHT, itemInterval, sortItems } from './interior';
-import type { CabinetConfig, Column, ColumnDoors, Fixture, Layout, Part, Warning } from './types';
+import type { CabinetConfig, Column, ColumnDoors, Fixture, InteriorItem, Layout, Part, Warning } from './types';
 
 /** Gap between adjacent doors and around overlay doors. */
 export const DOOR_GAP = 3;
@@ -45,6 +45,13 @@ export function columnDoors(col: Column, index: number, columnCount: number, col
   return col.doors ?? { count: columnWidth > 600 ? 2 : 1, hinge: index < columnCount / 2 ? 'left' : 'right', split: null };
 }
 
+/** Ids of the 3D parts / fixtures an interior item turns into (see the column loop in buildLayout). */
+export function itemPartIds(it: InteriorItem): string[] {
+  if (it.type === 'shelf') return [`shelf-${it.id}`];
+  if (it.type === 'rod') return [`rod-${it.id}`];
+  return [`dfront-${it.id}`, `dside-${it.id}--1`, `dside-${it.id}-1`, `dend-${it.id}--1`, `dend-${it.id}-1`, `dbottom-${it.id}`];
+}
+
 const barLength = (space: number) => [...BAR_LENGTHS].reverse().find((l) => l <= space) ?? BAR_LENGTHS[0];
 
 /**
@@ -78,9 +85,6 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   const boundary = (i: number) =>
     i <= 0 ? -W / 2 : i >= n ? W / 2 : modular ? -W / 2 + i * moduleW : colLeft(i) - T / 2;
 
-  if (Dc < 250) warnings.push({ level: 'error', message: `Thellësia e korpusit është vetëm ${Math.round(Dc)} mm — rriteni thellësinë.` });
-  if (Hi < 200) warnings.push({ level: 'error', message: 'Lartësia e brendshme është shumë e vogël për këtë bazament / lartësi.' });
-  if (cw < 250) warnings.push({ level: 'warn', message: `Seksionet janë vetëm ${Math.round(cw)} mm të gjera — përdorni më pak seksione.` });
 
   // --- Carcass ---------------------------------------------------------------
   /** One cabinet box spanning [x0, x1]: sides, top, bottom, plinth and back. */
@@ -200,18 +204,36 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     // Validation: bounds and overlaps.
     sorted.forEach((it, idx) => {
       const [lo, hi] = itemInterval(it, T);
-      if (lo < 0 || hi > Hi) warnings.push({ level: 'error', message: `${ITEM_NAMES[it.type]} në ${label} del jashtë hapësirës së brendshme (0–${Math.round(Hi)} mm).` });
+      if (lo < 0 || hi > Hi) {
+        warnings.push({
+          level: 'error',
+          message: `${ITEM_NAMES[it.type]} në ${label} del jashtë hapësirës së brendshme (0–${Math.round(Hi)} mm).`,
+          focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
+        });
+      }
       const next = sorted[idx + 1];
       if (next) {
         const [nlo] = itemInterval(next, T);
-        if (nlo < hi - 0.5) warnings.push({ level: 'error', message: `${ITEM_NAMES[it.type]} dhe ${ITEM_NAMES[next.type].toLowerCase()} mbivendosen në ${label}.` });
+        if (nlo < hi - 0.5) {
+          warnings.push({
+            level: 'error',
+            message: `${ITEM_NAMES[it.type]} dhe ${ITEM_NAMES[next.type].toLowerCase()} mbivendosen në ${label}.`,
+            focus: { tab: 'interior', column: ci, itemIds: [it.id, next.id], partIds: [...itemPartIds(it), ...itemPartIds(next)] },
+          });
+        }
       }
     });
 
     for (const it of sorted) {
       if (it.type === 'shelf') {
         const len = cw - 2;
-        if (len > 900 && T <= 19) warnings.push({ level: 'warn', message: `Rafti ${Math.round(len)} mm në ${label} mund të përkulet — shtoni ndarëse ose pllakë më të trashë.` });
+        if (len > 900 && T <= 19) {
+          warnings.push({
+            level: 'warn',
+            message: `Rafti ${Math.round(len)} mm në ${label} mund të përkulet — shtoni ndarëse ose pllakë më të trashë.`,
+            focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
+          });
+        }
         parts.push({
           id: `shelf-${it.id}`,
           name: 'Raft',
@@ -231,7 +253,11 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       } else {
         const h = it.height ?? DEFAULT_DRAWER_HEIGHT;
         if (!slideLen) {
-          warnings.push({ level: 'error', message: `Nuk ka thellësi të mjaftueshme për shinat e sirtarit në ${label}.` });
+          warnings.push({
+            level: 'error',
+            message: `Nuk ka thellësi të mjaftueshme për shinat e sirtarit në ${label}.`,
+            focus: { tab: 'size', field: 'depth', column: ci },
+          });
           continue;
         }
         const key = `drawer-${it.id}`;
@@ -261,7 +287,13 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         const boxH = Math.max(60, h - 50);
         const boxBottom = floorY + it.y + 15;
         const boxZ = drawerFrontZ - T / 2 - boxD / 2;
-        if (boxH < 80) warnings.push({ level: 'warn', message: `Sirtari në ${label} është shumë i ulët (${h} mm).` });
+        if (boxH < 80) {
+          warnings.push({
+            level: 'warn',
+            message: `Sirtari në ${label} është shumë i ulët (${h} mm).`,
+            focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
+          });
+        }
 
         for (const s of [-1, 1] as const) {
           parts.push({
@@ -393,12 +425,11 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         const x0 = ci === 0 ? -W / 2 + 2 : boundary(ci) + DOOR_GAP / 2;
         const x1 = ci === n - 1 ? W / 2 - 2 : boundary(ci + 1) - DOOR_GAP / 2;
         const rows: [number, number, 'low' | 'mid' | 'high'][] = [];
+        const firstDoor = doorInfo.count;
+        const badSplit = d.split != null && (d.split < 100 || d.split > Hi - 100);
         if (d.split == null) {
           rows.push([doorBottom, doorTop, 'mid']);
         } else {
-          if (d.split < 100 || d.split > Hi - 100) {
-            warnings.push({ level: 'warn', message: `Ndarja e dyerve në seksionin ${ci + 1} është shumë afër lartë ose poshtë.` });
-          }
           const s = floorY + d.split;
           rows.push([doorBottom, s - DOOR_GAP / 2, 'high'], [s + DOOR_GAP / 2, doorTop, 'low']);
         }
@@ -411,6 +442,14 @@ export function buildLayout(cfg: CabinetConfig): Layout {
             addDoor(mid + DOOR_GAP / 2, x1, y0, y1, false, handleAt);
           }
         }
+        if (badSplit) {
+          const ids = Array.from({ length: doorInfo.count - firstDoor }, (_, k) => `door-${firstDoor + k}`);
+          warnings.push({
+            level: 'warn',
+            message: `Ndarja e dyerve në seksionin ${ci + 1} është shumë afër lartë ose poshtë.`,
+            focus: { tab: 'doors', column: ci, partIds: ids },
+          });
+        }
       });
     } else {
       const nd = Math.min(8, Math.max(1, cfg.doorCount));
@@ -421,16 +460,42 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       }
     }
 
-    if (doorInfo.width > 650) warnings.push({ level: 'warn', message: `Dyer deri në ${Math.round(doorInfo.width)} mm të gjera — mbi 600 mm nuk rekomandohet; shtoni dyer.` });
-    if (doorInfo.height > 2400) warnings.push({ level: 'warn', message: `Dyert janë ${Math.round(doorInfo.height)} mm të larta — mund të shtrembërohen; ndajini lart/poshtë.` });
+    const doorsWhere = (test: (p: Part) => boolean) => parts.filter((p) => p.category === 'door' && test(p)).map((p) => p.id);
+    if (doorInfo.width > 650) {
+      warnings.push({
+        level: 'warn',
+        message: `Dyer deri në ${Math.round(doorInfo.width)} mm të gjera — mbi 600 mm nuk rekomandohet; shtoni dyer.`,
+        focus: { tab: 'doors', field: cfg.doorLayout === 'even' ? 'doorCount' : undefined, partIds: doorsWhere((p) => p.width > 650) },
+      });
+    }
+    if (doorInfo.height > 2400) {
+      warnings.push({
+        level: 'warn',
+        message: `Dyert janë ${Math.round(doorInfo.height)} mm të larta — mund të shtrembërohen; ndajini lart/poshtë.`,
+        focus: { tab: 'doors', partIds: doorsWhere((p) => p.length > 2400) },
+      });
+    }
   } else if (cfg.doorType === 'sliding') {
     const nd = Math.min(4, Math.max(2, cfg.doorCount));
     const dh = H - P - 4;
     const dw = (W + (nd - 1) * SLIDING_OVERLAP) / nd;
     const weight = (dw * dh * T * 1e-9) * density;
     doorInfo = { count: nd, width: dw, height: dh, weightKg: weight, hingeTotal: 0 };
-    if (dw < 500) warnings.push({ level: 'warn', message: `Dyert rrëshqitëse janë vetëm ${Math.round(dw)} mm të gjera — përdorni më pak dyer.` });
-    if (weight > 40) warnings.push({ level: 'warn', message: `Çdo derë rrëshqitëse peshon ~${weight.toFixed(0)} kg — kontrolloni kapacitetin e shinës.` });
+    const allDoors = Array.from({ length: nd }, (_, i) => `door-${i}`);
+    if (dw < 500) {
+      warnings.push({
+        level: 'warn',
+        message: `Dyert rrëshqitëse janë vetëm ${Math.round(dw)} mm të gjera — përdorni më pak dyer.`,
+        focus: { tab: 'doors', field: 'doorCount', partIds: allDoors },
+      });
+    }
+    if (weight > 40) {
+      warnings.push({
+        level: 'warn',
+        message: `Çdo derë rrëshqitëse peshon ~${weight.toFixed(0)} kg — kontrolloni kapacitetin e shinës.`,
+        focus: { tab: 'doors', field: 'doorCount', partIds: allDoors },
+      });
+    }
 
     const y = P + 2 + dh / 2;
     for (let i = 0; i < nd; i++) {
@@ -466,6 +531,30 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         });
       }
     }
+  }
+
+  // Carcass-wide checks run last so they can point at the parts they concern.
+  const idsOf = (...cats: string[]) => parts.filter((p) => cats.includes(p.category)).map((p) => p.id);
+  if (Dc < 250) {
+    warnings.unshift({
+      level: 'error',
+      message: `Thellësia e korpusit është vetëm ${Math.round(Dc)} mm — rriteni thellësinë.`,
+      focus: { tab: 'size', field: 'depth', partIds: idsOf('side', 'topBottom') },
+    });
+  }
+  if (Hi < 200) {
+    warnings.unshift({
+      level: 'error',
+      message: 'Lartësia e brendshme është shumë e vogël për këtë bazament / lartësi.',
+      focus: { tab: 'size', field: 'plinth', partIds: idsOf('side', 'plinth') },
+    });
+  }
+  if (cw < 250) {
+    warnings.unshift({
+      level: 'warn',
+      message: `Seksionet janë vetëm ${Math.round(cw)} mm të gjera — përdorni më pak seksione.`,
+      focus: { tab: 'size', field: 'sections', partIds: idsOf('divider', 'side') },
+    });
   }
 
   return {

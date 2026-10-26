@@ -46,6 +46,9 @@ export class CabinetRenderer {
   private motions = new Map<string, MotionGroup>();
   private materials = new Map<string, THREE.Material>();
   private usedMaterials = new Set<string>();
+  /** Parts lit up red because the user clicked a warning about them. */
+  private highlighted = new Set<string>();
+  private highlightMat = new THREE.MeshStandardMaterial({ color: '#f87171', emissive: '#dc2626', emissiveIntensity: 0.5, roughness: 0.6 });
   private geometries: THREE.BufferGeometry[] = [];
   private view: ViewState = { doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true };
   private clock = new THREE.Clock();
@@ -116,8 +119,10 @@ export class CabinetRenderer {
     for (const fx of layout.fixtures) {
       const obj = fx.kind === 'rod' ? this.rodMesh(fx.length) : this.handleMesh(fx.length, fx.orientation, cfg.handleFinish);
       const motion = fx.motionKey ? this.motions.get(fx.motionKey)?.motion : undefined;
+      obj.userData.partId = fx.id;
       this.attach(obj, fx.position, motion, previous);
     }
+    this.applyHighlight();
 
     this.buildDimensions(cfg, unit);
     this.pruneMaterials();
@@ -136,6 +141,12 @@ export class CabinetRenderer {
   setView(view: Partial<ViewState>) {
     this.view = { ...this.view, ...view };
     this.applyVisibility();
+  }
+
+  /** Light up these parts / fixtures in pulsing red (empty to clear). */
+  setHighlight(ids: string[]) {
+    this.highlighted = new Set(ids);
+    this.applyHighlight();
   }
 
   resetCamera() {
@@ -162,6 +173,7 @@ export class CabinetRenderer {
     this.resizeObserver.disconnect();
     this.clear();
     this.materials.forEach((m) => m.dispose());
+    this.highlightMat.dispose();
     this.controls.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -200,6 +212,7 @@ export class CabinetRenderer {
     mesh.castShadow = part.category !== 'back';
     mesh.receiveShadow = true;
     mesh.userData.category = part.category;
+    mesh.userData.partId = part.id;
     if (part.category === 'door' || part.category === 'drawerFront') {
       // The real 3 mm gaps are too thin to read on screen; a faint outline shows where fronts split.
       const edges = new THREE.EdgesGeometry(geo);
@@ -344,6 +357,23 @@ export class CabinetRenderer {
     return mat;
   }
 
+  /** Swap highlighted meshes to the red material, restoring the original on the rest. */
+  private applyHighlight() {
+    this.root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      let owner: THREE.Object3D | null = o;
+      while (owner && owner.userData.partId === undefined) owner = owner.parent;
+      const on = !!owner && this.highlighted.has(owner.userData.partId);
+      if (on && !o.userData.baseMaterial) {
+        o.userData.baseMaterial = o.material;
+        o.material = this.highlightMat;
+      } else if (!on && o.userData.baseMaterial) {
+        o.material = o.userData.baseMaterial;
+        delete o.userData.baseMaterial;
+      }
+    });
+  }
+
   /** Colour-picker drags create a material per colour; drop the ones no longer on screen. */
   private pruneMaterials() {
     for (const [key, mat] of this.materials) {
@@ -410,6 +440,7 @@ export class CabinetRenderer {
       else if (m.type === 'slide') mg.group.position.x = m.travel * MM * mg.t;
       else mg.group.position.z = m.travel * MM * mg.t;
     }
+    if (this.highlighted.size) this.highlightMat.emissiveIntensity = 0.35 + 0.3 * Math.sin(this.clock.elapsedTime * 5);
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);

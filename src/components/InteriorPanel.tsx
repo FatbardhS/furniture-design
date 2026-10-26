@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { uid } from '../domain/catalog';
 import { DEFAULT_DRAWER_HEIGHT, distributeShelves, placeNewItem, sortItems } from '../domain/interior';
 import { fmtLen } from '../domain/units';
-import type { Column, InteriorItem, ItemType } from '../domain/types';
+import type { ActiveFocus, Column, InteriorItem, ItemType } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon, type IconName } from './icons';
-import { Button, Field, LengthInput, Section, Slider } from './ui';
+import { Button, Field, Flag, LengthInput, Section, Slider } from './ui';
 
 const ITEM_META: Record<ItemType, { label: string; icon: IconName }> = {
   shelf: { label: 'Raft', icon: 'shelf' },
@@ -13,11 +13,16 @@ const ITEM_META: Record<ItemType, { label: string; icon: IconName }> = {
   drawer: { label: 'Sirtar', icon: 'drawer' },
 };
 
-export function InteriorPanel({ c }: { c: Configurator }) {
+export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
   const { config, patch, unit, layout } = c;
   const [active, setActive] = useState(0);
   const [notice, setNotice] = useState('');
   const ci = Math.min(active, config.columns.length - 1);
+
+  // A clicked warning opens the section it is about.
+  useEffect(() => {
+    if (focus?.tab === 'interior' && focus.column != null) setActive(focus.column);
+  }, [focus?.nonce, focus?.tab, focus?.column]);
   const column = config.columns[ci];
   const Hi = layout.interior.height;
   const T = config.thickness;
@@ -91,7 +96,7 @@ export function InteriorPanel({ c }: { c: Configurator }) {
               onClick={() => setActive(i)}
               className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition ${
                 i === ci ? 'border-accent-500 bg-accent-50 text-accent-700' : 'border-stone-200 text-stone-500 hover:border-stone-300'
-              }`}
+              } ${focus?.tab === 'interior' && focus.column === i ? 'ring-2 ring-red-400' : ''}`}
             >
               {i + 1}
               <span className="ml-1 font-normal text-stone-400">· {col.items.length}</span>
@@ -133,7 +138,8 @@ export function InteriorPanel({ c }: { c: Configurator }) {
         {sortItems(column.items)
           .reverse()
           .map((it) => (
-            <div key={it.id} className="rounded-lg border border-stone-200 bg-white p-2.5">
+            <Flag key={it.id} on={!!focus?.itemIds?.includes(it.id)} nonce={focus?.nonce}>
+            <div className="rounded-lg border border-stone-200 bg-white p-2.5">
               <div className="mb-2 flex items-center gap-2">
                 <Icon name={ITEM_META[it.type].icon} className="h-4 w-4 text-stone-500" />
                 <span className="text-xs font-semibold text-stone-700">{ITEM_META[it.type].label}</span>
@@ -154,6 +160,7 @@ export function InteriorPanel({ c }: { c: Configurator }) {
                 )}
               </div>
             </div>
+            </Flag>
           ))}
       </Section>
     </>

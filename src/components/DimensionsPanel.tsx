@@ -1,12 +1,12 @@
 import { MAX_SINGLE_DOOR, STANDARD_SECTION_WIDTHS } from '../domain/catalog';
 import { newColumn, sectionCountFor } from '../domain/interior';
 import { fmtLen, toUnit } from '../domain/units';
-import type { Construction, SectionFit } from '../domain/types';
+import type { ActiveFocus, Construction, SectionFit } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon } from './icons';
-import { Button, Field, LengthInput, NumberInput, Section, Segmented, Stat } from './ui';
+import { Button, Field, Flag, LengthInput, NumberInput, Section, Segmented, Stat } from './ui';
 
-export function DimensionsPanel({ c }: { c: Configurator }) {
+export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
   const { config, patch, unit, layout } = c;
   const { interior } = layout;
   const fit = config.sectionFit;
@@ -32,13 +32,17 @@ export function DimensionsPanel({ c }: { c: Configurator }) {
           <Field label="Lartësia">
             <LengthInput mm={config.height} unit={unit} min={300} max={2800} onChange={(height) => patch({ height })} />
           </Field>
-          <Field label="Thellësia">
-            <LengthInput mm={config.depth} unit={unit} min={250} max={900} onChange={(depth) => patch({ depth })} />
-          </Field>
+          <Flag on={focus?.field === 'depth'} nonce={focus?.nonce}>
+            <Field label="Thellësia">
+              <LengthInput mm={config.depth} unit={unit} min={250} max={900} onChange={(depth) => patch({ depth })} />
+            </Field>
+          </Flag>
         </div>
-        <Field label="Lartësia e bazamentit (soklës)" hint="0 = pa bazament">
-          <LengthInput mm={config.plinthHeight} unit={unit} min={0} max={250} onChange={(plinthHeight) => patch({ plinthHeight })} />
-        </Field>
+        <Flag on={focus?.field === 'plinth'} nonce={focus?.nonce}>
+          <Field label="Lartësia e bazamentit (soklës)" hint="0 = pa bazament">
+            <LengthInput mm={config.plinthHeight} unit={unit} min={0} max={250} onChange={(plinthHeight) => patch({ plinthHeight })} />
+          </Field>
+        </Flag>
       </Section>
 
       <Section title="Seksionet">
@@ -53,6 +57,7 @@ export function DimensionsPanel({ c }: { c: Configurator }) {
           />
         </Field>
 
+        <Flag on={focus?.field === 'sections'} nonce={focus?.nonce} className="space-y-3">
         <label className="flex items-center gap-2 text-xs font-medium text-stone-700">
           <input type="checkbox" className="accent-accent-500" checked={fit.enabled} onChange={(e) => setFit({ enabled: e.target.checked })} />
           Ndaji seksionet sipas gjerësisë standarde
@@ -102,6 +107,8 @@ export function DimensionsPanel({ c }: { c: Configurator }) {
             </div>
           </Field>
         )}
+
+        </Flag>
 
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Gjer. brenda" value={fmtLen(interior.columnWidth, unit)} sub="për seksion" />

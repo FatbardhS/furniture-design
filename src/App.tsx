@@ -12,6 +12,7 @@ import { Viewport } from './components/Viewport';
 import { formatMoney } from './domain/pricing';
 import { useConfigurator } from './state/useConfigurator';
 import type { CabinetRenderer } from './three/CabinetRenderer';
+import type { ActiveFocus, Warning } from './domain/types';
 
 type LeftTab = 'size' | 'interior' | 'doors' | 'finish';
 type RightTab = 'quote' | 'bom' | 'cuts' | 'prices';
@@ -22,6 +23,20 @@ export default function App() {
   const [left, setLeft] = useState<LeftTab>('size');
   const [right, setRight] = useState<RightTab>('quote');
   const [exporting, setExporting] = useState(false);
+
+  // The warning the user clicked. Keyed by message so it clears itself once the problem is fixed.
+  const [selected, setSelected] = useState<{ message: string; nonce: number } | null>(null);
+  const activeWarning = selected ? c.layout.warnings.find((w) => w.message === selected.message) : undefined;
+  const focus: ActiveFocus | null = activeWarning?.focus && selected ? { ...activeWarning.focus, nonce: selected.nonce } : null;
+
+  const selectWarning = (w: Warning) => {
+    if (selected?.message === w.message) {
+      setSelected(null);
+      return;
+    }
+    setSelected({ message: w.message, nonce: Date.now() });
+    if (w.focus) setLeft(w.focus.tab);
+  };
 
   const exportPdf = async () => {
     setExporting(true);
@@ -82,15 +97,15 @@ export default function App() {
             ]}
           />
           <div className="flex-1 overflow-y-auto scrollbar-thin">
-            {left === 'size' && <DimensionsPanel c={c} />}
-            {left === 'interior' && <InteriorPanel c={c} />}
-            {left === 'doors' && <DoorsPanel c={c} />}
+            {left === 'size' && <DimensionsPanel c={c} focus={focus} />}
+            {left === 'interior' && <InteriorPanel c={c} focus={focus} />}
+            {left === 'doors' && <DoorsPanel c={c} focus={focus} />}
             {left === 'finish' && <FinishPanel c={c} />}
           </div>
         </aside>
 
         <main className="order-1 h-[55vh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
-          <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} />
+          <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} activeMessage={activeWarning?.message} focus={focus} onSelectWarning={selectWarning} />
         </main>
 
         <aside className="order-3 flex flex-col border-t border-stone-200 bg-white lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0">

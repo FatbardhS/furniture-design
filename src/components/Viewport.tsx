@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import type { CabinetConfig, Layout, Unit } from '../domain/types';
+import type { ActiveFocus, CabinetConfig, Layout, Unit, Warning } from '../domain/types';
 import { CabinetRenderer, type ViewState } from '../three/CabinetRenderer';
 import { Icon } from './icons';
 import { Button, Toggle } from './ui';
@@ -9,11 +9,17 @@ export function Viewport({
   config,
   unit,
   rendererRef,
+  activeMessage,
+  focus,
+  onSelectWarning,
 }: {
   layout: Layout;
   config: CabinetConfig;
   unit: Unit;
   rendererRef: RefObject<CabinetRenderer | null>;
+  activeMessage?: string;
+  focus: ActiveFocus | null;
+  onSelectWarning: (w: Warning) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true });
@@ -35,6 +41,19 @@ export function Viewport({
   useEffect(() => {
     rendererRef.current?.setView(view);
   }, [view, rendererRef]);
+
+  const highlightKey = focus?.partIds?.join('|') ?? '';
+  useEffect(() => {
+    rendererRef.current?.setHighlight(highlightKey ? highlightKey.split('|') : []);
+  }, [highlightKey, layout, rendererRef]);
+
+  // On each new click, make the highlighted parts visible: hide doors for interior problems,
+  // show (closed) doors for door problems.
+  useEffect(() => {
+    if (!focus) return;
+    if (focus.tab === 'interior') setView((v) => ({ ...v, showFronts: false }));
+    if (focus.tab === 'doors') setView((v) => ({ ...v, showFronts: true, doorsOpen: false }));
+  }, [focus?.nonce]);
 
   const set = (p: Partial<ViewState>) => setView((v) => ({ ...v, ...p }));
   const hasDoors = config.doorType !== 'none';
@@ -82,14 +101,28 @@ export function Viewport({
             {problems.length} vërejtje për kontroll
           </button>
           {showWarnings && (
-            <ul className="max-h-40 space-y-1 overflow-auto rounded-b-lg rounded-tr-lg border border-stone-200 bg-white/95 p-2.5 text-xs shadow-sm scrollbar-thin">
-              {problems.map((w, i) => (
-                <li key={i} className="flex gap-1.5">
-                  <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${w.level === 'error' ? 'bg-red-500' : w.level === 'warn' ? 'bg-amber-500' : 'bg-sky-500'}`} />
-                  {w.message}
-                </li>
-              ))}
-            </ul>
+            <div className="max-h-48 overflow-auto rounded-b-lg rounded-tr-lg border border-stone-200 bg-white/95 p-1.5 text-xs shadow-sm scrollbar-thin">
+              <p className="px-1.5 pb-1 pt-0.5 text-[11px] text-stone-500">Kliko një vërejtje për të parë ku duhet rregulluar.</p>
+              <ul className="space-y-0.5">
+                {problems.map((w, i) => {
+                  const active = w.message === activeMessage;
+                  return (
+                    <li key={i}>
+                      <button
+                        onClick={() => onSelectWarning(w)}
+                        className={`flex w-full gap-1.5 rounded-md px-1.5 py-1 text-left transition ${
+                          active ? 'bg-red-50 font-medium text-red-800 ring-1 ring-red-300' : 'hover:bg-stone-100'
+                        }`}
+                      >
+                        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${w.level === 'error' ? 'bg-red-500' : w.level === 'warn' ? 'bg-amber-500' : 'bg-sky-500'}`} />
+                        <span className="flex-1">{w.message}</span>
+                        <span className="shrink-0 self-center text-[10px] text-stone-400">{active ? 'Fshih' : 'Shiko →'}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </div>
       )}

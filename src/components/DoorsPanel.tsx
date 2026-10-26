@@ -1,14 +1,14 @@
 import { HANDLE_LABELS } from '../domain/catalog';
 import { columnDoors } from '../domain/layout';
 import { fmtLen } from '../domain/units';
-import type { ColumnDoors, DoorLayout, DoorType, HandleFinish, HandleType } from '../domain/types';
+import type { ActiveFocus, ColumnDoors, DoorLayout, DoorType, HandleFinish, HandleType } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon } from './icons';
-import { Button, Field, LengthInput, Section, Segmented, Select, Stat } from './ui';
+import { Button, Field, Flag, LengthInput, Section, Segmented, Select, Stat } from './ui';
 
 const DOOR_LIMITS: Record<DoorType, [number, number]> = { none: [0, 0], hinged: [1, 8], sliding: [2, 4] };
 
-export function DoorsPanel({ c }: { c: Configurator }) {
+export function DoorsPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
   const { config, patch, layout, unit } = c;
   const [min, max] = DOOR_LIMITS[config.doorType];
   const doors = layout.doors;
@@ -44,6 +44,7 @@ export function DoorsPanel({ c }: { c: Configurator }) {
           </Field>
         )}
         {config.doorType !== 'none' && !perColumn && (
+          <Flag on={focus?.field === 'doorCount'} nonce={focus?.nonce}>
           <Field label="Numri i dyerve">
             <div className="flex items-center gap-2">
               <Button onClick={() => patch({ doorCount: config.doorCount - 1 })} disabled={config.doorCount <= min}>
@@ -55,6 +56,7 @@ export function DoorsPanel({ c }: { c: Configurator }) {
               </Button>
             </div>
           </Field>
+          </Flag>
         )}
         {config.doorType !== 'none' && doors.count > 0 && (
           <div className="grid grid-cols-2 gap-2">
@@ -72,7 +74,7 @@ export function DoorsPanel({ c }: { c: Configurator }) {
         )}
       </Section>
 
-      {perColumn && <SectionDoors c={c} />}
+      {perColumn && <SectionDoors c={c} focus={focus} />}
 
       <Section title="Okovët">
         <Field label="Dorezat">
@@ -123,7 +125,7 @@ export function DoorsPanel({ c }: { c: Configurator }) {
 }
 
 /** Per-column door editor: none / single / pair, hinge side, optional upper/lower split. */
-function SectionDoors({ c }: { c: Configurator }) {
+function SectionDoors({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
   const { config, patch, layout, unit } = c;
   const { columnWidth, height: Hi } = layout.interior;
   const n = config.columns.length;
@@ -149,7 +151,8 @@ function SectionDoors({ c }: { c: Configurator }) {
       {config.columns.map((col, ci) => {
         const d = columnDoors(col, ci, n, columnWidth);
         return (
-          <div key={col.id} className="rounded-lg border border-stone-200 bg-white p-2.5">
+          <Flag key={col.id} on={focus?.tab === 'doors' && focus.column === ci} nonce={focus?.nonce}>
+          <div className="rounded-lg border border-stone-200 bg-white p-2.5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-stone-700">Seksioni {ci + 1}</span>
               <span className="text-[11px] text-stone-400">{fmtLen(columnWidth, unit)} gjerësi</span>
@@ -196,6 +199,7 @@ function SectionDoors({ c }: { c: Configurator }) {
               </div>
             )}
           </div>
+          </Flag>
         );
       })}
     </Section>

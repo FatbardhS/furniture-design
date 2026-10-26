@@ -105,6 +105,27 @@ describe('layout + BOM', () => {
     expect(msgs).toMatch(/jashtë hapësirës/);
   });
 
+  it('points every warning at parts that exist and the panel that fixes it', () => {
+    const cfg = box({
+      width: 2000,
+      height: 2600,
+      doorType: 'hinged',
+      doorCount: 2,
+      columns: [
+        { id: 'c', items: [{ id: 'a', type: 'shelf', y: 500 }, { id: 'b', type: 'drawer', y: 510, height: 200 }, { id: 'r', type: 'rod', y: 5000 }] },
+      ],
+    });
+    const layout = buildLayout(cfg);
+    const ids = new Set([...layout.parts.map((p) => p.id), ...layout.fixtures.map((f) => f.id)]);
+    expect(layout.warnings.length).toBeGreaterThanOrEqual(4); // overlap, out of range, sagging shelf, wide + tall doors
+    for (const w of layout.warnings) {
+      expect(w.focus, w.message).toBeDefined();
+      for (const id of w.focus!.partIds ?? []) expect(ids.has(id), `${w.message} → ${id}`).toBe(true);
+    }
+    const overlap = layout.warnings.find((w) => w.message.includes('mbivendosen'))!;
+    expect(overlap.focus).toMatchObject({ tab: 'interior', column: 0, itemIds: ['a', 'b'] });
+  });
+
   it('hinge rule scales with height and weight', () => {
     expect(hingesForDoor(700, 3)).toBe(2);
     expect(hingesForDoor(2100, 10)).toBe(5);

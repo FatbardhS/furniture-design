@@ -159,9 +159,20 @@ export type Fixture =
       motionKey?: string;
     };
 
+/** Where a warning can be fixed: which panel, section, items or field, and which parts to light up in 3D. */
+export interface WarningFocus {
+  tab: 'size' | 'interior' | 'doors';
+  column?: number;
+  itemIds?: string[];
+  field?: 'depth' | 'height' | 'plinth' | 'sections' | 'doorCount';
+  /** Part / fixture ids to highlight in the 3D view. */
+  partIds?: string[];
+}
+
 export interface Warning {
   level: 'info' | 'warn' | 'error';
   message: string;
+  focus?: WarningFocus;
 }
 
 export interface Layout {
@@ -185,3 +196,6 @@ export interface Layout {
     hingeTotal: number;
   };
 }
+
+/** The warning focus the user is currently looking at; `nonce` changes on every click. */
+export type ActiveFocus = WarningFocus & { nonce: number };
