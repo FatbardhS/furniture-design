@@ -34,6 +34,14 @@ export const SLIDE_LABELS = { ballBearing: 'Ball-bearing slides', softCloseUnder
 /** Standard drawer slide lengths in mm. */
 export const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500, 550, 600, 650];
 
+/**
+ * Common section widths (mm) used by carpenters in Kosovo and the wider region: hinged door
+ * panels stay within ~450–600 mm, so 600 suits one door and 800–1200 suit a pair.
+ */
+export const STANDARD_SECTION_WIDTHS = [600, 800, 900, 1000, 1200];
+/** Widest hinged door before hinges strain; above this a section gets two doors. */
+export const MAX_SINGLE_DOOR = 600;
+
 /** Standard board sheet size (mm), used to estimate the number of sheets to order. */
 export const SHEET = { length: 2800, width: 2070 };
 
@@ -48,6 +56,8 @@ export function defaultConfig(): CabinetConfig {
     thickness: 18,
     backThickness: 3,
     plinthHeight: 80,
+    construction: 'dividers',
+    sectionFit: { enabled: false, width: 1000, doors: 'auto' },
     columns: [
       {
         id: uid('col'),

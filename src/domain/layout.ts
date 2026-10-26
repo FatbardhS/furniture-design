@@ -68,93 +68,110 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   const floorY = P + T;
   const Hi = H - P - 2 * T;
   const n = Math.max(1, cfg.columns.length);
-  const cw = (Wi - (n - 1) * T) / n;
+  // Separate modules: every section is its own box, so neighbours stand side panel to side panel.
+  const modular = cfg.construction === 'modules' && n > 1;
+  const moduleW = W / n;
+  const cw = modular ? moduleW - 2 * T : (Wi - (n - 1) * T) / n;
+  const colLeft = (i: number) => (modular ? -W / 2 + i * moduleW + T : -Wi / 2 + i * (cw + T));
+  /** x of the line between section i−1 and i: a divider's centre, or the joint between modules. */
+  const boundary = (i: number) =>
+    i <= 0 ? -W / 2 : i >= n ? W / 2 : modular ? -W / 2 + i * moduleW : colLeft(i) - T / 2;
 
   if (Dc < 250) warnings.push({ level: 'error', message: `Carcass depth is only ${Math.round(Dc)} mm — increase overall depth.` });
   if (Hi < 200) warnings.push({ level: 'error', message: 'Interior height is too small for this plinth / height combination.' });
   if (cw < 250) warnings.push({ level: 'warn', message: `Columns are only ${Math.round(cw)} mm wide — consider fewer columns.` });
 
   // --- Carcass ---------------------------------------------------------------
-  for (const side of [-1, 1] as const) {
-    parts.push({
-      id: `side-${side}`,
-      name: 'Side panel',
-      category: 'side',
-      material: 'carcass',
-      length: H,
-      width: Dc,
-      thickness: T,
-      bandLong: 1,
-      bandShort: 0,
-      position: [side * (W / 2 - T / 2), H / 2, zMid],
-      size: [T, H, Dc],
-      grain: 'y',
-    });
-  }
-  for (const [id, name, y] of [
-    ['bottom', 'Bottom panel', P + T / 2],
-    ['top', 'Top panel', H - T / 2],
-  ] as const) {
-    parts.push({
-      id,
-      name,
-      category: 'topBottom',
-      material: 'carcass',
-      length: Wi,
-      width: Dc,
-      thickness: T,
-      bandLong: 1,
-      bandShort: 0,
-      position: [0, y, zMid],
-      size: [Wi, T, Dc],
-      grain: 'x',
-    });
-  }
-  if (P > 0) {
-    parts.push({
-      id: 'plinth',
-      name: 'Plinth (toe kick)',
-      category: 'plinth',
-      material: 'carcass',
-      length: Wi,
-      width: P,
-      thickness: T,
-      bandLong: 1,
-      bandShort: 0,
-      position: [0, P / 2, zFront - PLINTH_RECESS - T / 2],
-      size: [Wi, P, T],
-      grain: 'x',
-    });
-  }
+  /** One cabinet box spanning [x0, x1]: sides, top, bottom, plinth and back. */
+  const addBox = (x0: number, x1: number, tag: string) => {
+    const bw = x1 - x0;
+    const inner = bw - 2 * T;
+    const cx = (x0 + x1) / 2;
+    for (const side of [-1, 1] as const) {
+      parts.push({
+        id: `${tag}side-${side}`,
+        name: 'Side panel',
+        category: 'side',
+        material: 'carcass',
+        length: H,
+        width: Dc,
+        thickness: T,
+        bandLong: 1,
+        bandShort: 0,
+        position: [cx + side * (bw / 2 - T / 2), H / 2, zMid],
+        size: [T, H, Dc],
+        grain: 'y',
+      });
+    }
+    for (const [id, name, y] of [
+      ['bottom', 'Bottom panel', P + T / 2],
+      ['top', 'Top panel', H - T / 2],
+    ] as const) {
+      parts.push({
+        id: `${tag}${id}`,
+        name,
+        category: 'topBottom',
+        material: 'carcass',
+        length: inner,
+        width: Dc,
+        thickness: T,
+        bandLong: 1,
+        bandShort: 0,
+        position: [cx, y, zMid],
+        size: [inner, T, Dc],
+        grain: 'x',
+      });
+    }
+    if (P > 0) {
+      parts.push({
+        id: `${tag}plinth`,
+        name: 'Plinth (toe kick)',
+        category: 'plinth',
+        material: 'carcass',
+        length: inner,
+        width: P,
+        thickness: T,
+        bandLong: 1,
+        bandShort: 0,
+        position: [cx, P / 2, zFront - PLINTH_RECESS - T / 2],
+        size: [inner, P, T],
+        grain: 'x',
+      });
+    }
 
-  // Back panel: split into vertical strips if a single piece won't fit on a sheet.
-  const backW = W - 4;
-  const backH = H - P - 4;
-  const fitsSheet = (a: number, b: number) =>
-    (Math.max(a, b) <= SHEET.length && Math.min(a, b) <= SHEET.width);
-  let backPieces = 1;
-  while (!fitsSheet(backW / backPieces, backH) && backPieces < 8) backPieces++;
-  const pieceW = backW / backPieces;
-  for (let i = 0; i < backPieces; i++) {
-    parts.push({
-      id: `back-${i}`,
-      name: 'Back panel (HDF)',
-      category: 'back',
-      material: 'back',
-      length: backH,
-      width: pieceW,
-      thickness: Tb,
-      bandLong: 0,
-      bandShort: 0,
-      position: [-backW / 2 + pieceW * (i + 0.5), P + 2 + backH / 2, -D / 2 + Tb / 2],
-      size: [pieceW - (backPieces > 1 ? 1 : 0), backH, Tb],
-      grain: 'y',
-    });
+    // Back panel: split into vertical strips if a single piece won't fit on a sheet.
+    const backW = bw - 4;
+    const backH = H - P - 4;
+    const fitsSheet = (a: number, b: number) => Math.max(a, b) <= SHEET.length && Math.min(a, b) <= SHEET.width;
+    let backPieces = 1;
+    while (!fitsSheet(backW / backPieces, backH) && backPieces < 8) backPieces++;
+    const pieceW = backW / backPieces;
+    for (let i = 0; i < backPieces; i++) {
+      parts.push({
+        id: `${tag}back-${i}`,
+        name: 'Back panel (HDF)',
+        category: 'back',
+        material: 'back',
+        length: backH,
+        width: pieceW,
+        thickness: Tb,
+        bandLong: 0,
+        bandShort: 0,
+        position: [cx - backW / 2 + pieceW * (i + 0.5), P + 2 + backH / 2, -D / 2 + Tb / 2],
+        size: [pieceW - (backPieces > 1 ? 1 : 0), backH, Tb],
+        grain: 'y',
+      });
+    }
+  };
+
+  if (modular) {
+    for (let i = 0; i < n; i++) addBox(boundary(i), boundary(i + 1), `m${i}-`);
+  } else {
+    addBox(-W / 2, W / 2, '');
   }
 
   // --- Columns, dividers and interior ------------------------------------------
-  const colLeft = (i: number) => -Wi / 2 + i * (cw + T);
-  for (let i = 0; i < n - 1; i++) {
+  for (let i = 0; i < (modular ? 0 : n - 1); i++) {
     parts.push({
       id: `divider-${i}`,
       name: 'Divider',
@@ -372,8 +389,8 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         const d = columnDoors(col, ci, n, cw);
         if (!d.count) return;
         // Outer doors cover the side panel fully; doors meeting at a divider each cover half of it.
-        const x0 = ci === 0 ? -W / 2 + 2 : colLeft(ci) - T / 2 + DOOR_GAP / 2;
-        const x1 = ci === n - 1 ? W / 2 - 2 : colLeft(ci) + cw + T / 2 - DOOR_GAP / 2;
+        const x0 = ci === 0 ? -W / 2 + 2 : boundary(ci) + DOOR_GAP / 2;
+        const x1 = ci === n - 1 ? W / 2 - 2 : boundary(ci + 1) - DOOR_GAP / 2;
         const rows: [number, number, 'low' | 'mid' | 'high'][] = [];
         if (d.split == null) {
           rows.push([doorBottom, doorTop, 'mid']);
@@ -454,7 +471,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     parts,
     fixtures,
     warnings,
-    interior: { width: Wi, height: Hi, depth: Dc, columnWidth: cw, floorY },
+    interior: { width: modular ? n * cw : Wi, height: Hi, depth: Dc, columnWidth: cw, floorY },
     doors: doorInfo,
   };
 }

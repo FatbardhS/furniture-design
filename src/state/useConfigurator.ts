@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildBom } from '../domain/bom';
 import { defaultConfig, defaultPricing } from '../domain/catalog';
+import { applySectionFit } from '../domain/interior';
 import { buildLayout } from '../domain/layout';
 import { computeQuote } from '../domain/pricing';
 import type { CabinetConfig, PricingConfig, Unit } from '../domain/types';
@@ -47,7 +48,14 @@ export function useConfigurator() {
   const bom = useMemo(() => buildBom(config, layout, pricing), [config, layout, pricing]);
   const quote = useMemo(() => computeQuote(bom, pricing), [bom, pricing]);
 
-  const patch = (p: Partial<CabinetConfig>) => setConfig((c) => ({ ...c, ...p }));
+  // Re-fit sections only when an input to the fit changes, so per-section door edits made
+  // afterwards aren't overwritten by unrelated changes.
+  const patch = (p: Partial<CabinetConfig>) =>
+    setConfig((c) => {
+      const next = { ...c, ...p };
+      const refit = 'width' in p || 'sectionFit' in p || 'construction' in p;
+      return refit ? applySectionFit(next) : next;
+    });
   const patchPricing = (p: Partial<PricingConfig>) => setPricing((c) => ({ ...c, ...p }));
   const reset = () => {
     setConfig(defaultConfig());

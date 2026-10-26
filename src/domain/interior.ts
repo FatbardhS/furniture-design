@@ -1,5 +1,5 @@
-import { uid } from './catalog';
-import type { Column, InteriorItem, ItemType } from './types';
+import { MAX_SINGLE_DOOR, uid } from './catalog';
+import type { CabinetConfig, Column, InteriorItem, ItemType } from './types';
 
 export const ROD_CLEARANCE = 15;
 export const DEFAULT_DRAWER_HEIGHT = 200;
@@ -91,4 +91,26 @@ export function newColumn(interiorHeight: number, thickness: number): Column {
       { id: uid('it'), type: 'shelf', y: snap(top / 3 - thickness) },
     ],
   };
+}
+
+/** How many standard-width sections fit in the overall width (at least one). */
+export const sectionCountFor = (width: number, standard: number) => Math.max(1, Math.floor(width / Math.max(100, standard)));
+
+/**
+ * Apply the "fit sections to a standard width" setting: as many sections as fit, leftover width
+ * spread evenly, each section given the configured doors. Existing column interiors are kept.
+ */
+export function applySectionFit(cfg: CabinetConfig): CabinetConfig {
+  const { sectionFit: fit } = cfg;
+  if (!fit.enabled) return cfg;
+  const n = sectionCountFor(cfg.width, fit.width);
+  const interiorHeight = cfg.height - cfg.plinthHeight - 2 * cfg.thickness;
+  const sectionW = cfg.width / n;
+  const count = fit.doors === 'auto' ? (sectionW > MAX_SINGLE_DOOR ? 2 : 1) : fit.doors;
+
+  const columns = Array.from({ length: n }, (_, i): Column => {
+    const col = cfg.columns[i] ?? newColumn(interiorHeight, cfg.thickness);
+    return { ...col, doors: { count, hinge: i < n / 2 ? 'left' : 'right', split: col.doors?.split ?? null } };
+  });
+  return { ...cfg, columns, doorType: count ? 'hinged' : 'none', doorLayout: 'perColumn' };
 }

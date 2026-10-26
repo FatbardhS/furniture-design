@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBom } from './bom';
 import { defaultConfig, defaultPricing } from './catalog';
-import { distributeShelves, placeNewItem } from './interior';
+import { applySectionFit, distributeShelves, placeNewItem } from './interior';
 import { buildLayout, hingesForDoor } from './layout';
 import { computeQuote } from './pricing';
 import type { CabinetConfig } from './types';
@@ -71,6 +71,21 @@ describe('layout + BOM', () => {
     expect(bom.hardware.find((h) => h.id === 'hinge')!.qty).toBe(layout.doors.hingeTotal);
   });
 
+  it('builds separate modules with their own sides, tops and backs', () => {
+    const cols = [0, 1, 2].map((i) => ({ id: `c${i}`, items: [] }));
+    const modules = buildLayout(box({ width: 3000, construction: 'modules', columns: cols }));
+    const count = (cat: string) => modules.parts.filter((p) => p.category === cat).length;
+    expect(count('side')).toBe(6);
+    expect(count('topBottom')).toBe(6);
+    expect(count('divider')).toBe(0);
+    // 1000 mm modules → 964 mm inside each
+    expect(modules.interior.columnWidth).toBe(1000 - 36);
+    // Doors per section meet exactly at the module joints.
+    const perCol = buildLayout(box({ width: 3000, construction: 'modules', columns: cols, doorType: 'hinged', doorLayout: 'perColumn' }));
+    const doors = perCol.parts.filter((p) => p.category === 'door');
+    expect(doors[1].position[0] + doors[1].size[0] / 2).toBeCloseTo(-500 - 1.5, 5);
+  });
+
   it('builds a drawer box with slides and fits slide length to depth', () => {
     const cfg = box({ columns: [{ id: 'c', items: [{ id: 'd', type: 'drawer', y: 0, height: 200 }] }] });
     const layout = buildLayout(cfg);
@@ -102,6 +117,19 @@ describe('interior helpers', () => {
     const col = { id: 'c', items: [] };
     expect(placeNewItem(col, 'drawer', 1000, 18)!.y).toBe(0);
     expect(placeNewItem(col, 'shelf', 1000, 18)!.y).toBe(490);
+  });
+
+  it('fits as many standard sections as possible with the right doors', () => {
+    const fit3 = applySectionFit(box({ width: 3000, sectionFit: { enabled: true, width: 1000, doors: 'auto' } }));
+    expect(fit3.columns).toHaveLength(3);
+    expect(fit3.columns.every((c) => c.doors?.count === 2)).toBe(true);
+    expect(fit3.doorLayout).toBe('perColumn');
+    // 3000 / 600 → 5 sections of 600, one door each in auto mode
+    const fit5 = applySectionFit(box({ width: 3000, sectionFit: { enabled: true, width: 600, doors: 'auto' } }));
+    expect(fit5.columns).toHaveLength(5);
+    expect(fit5.columns.every((c) => c.doors?.count === 1)).toBe(true);
+    // 3100 / 600 still 5 sections — leftover is spread, never a sixth narrow one
+    expect(applySectionFit(box({ width: 3100, sectionFit: { enabled: true, width: 600, doors: 2 } })).columns).toHaveLength(5);
   });
 
   it('distributes shelves evenly above drawers', () => {

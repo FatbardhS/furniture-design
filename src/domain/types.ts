@@ -30,6 +30,18 @@ export interface Column {
   doors?: ColumnDoors;
 }
 
+/** One carcass split by dividers, or a row of separate cabinet boxes (each with its own sides). */
+export type Construction = 'dividers' | 'modules';
+
+/** Derive the column count from the overall width: as many sections of `width` as fit. */
+export interface SectionFit {
+  enabled: boolean;
+  /** Standard section width in mm. Leftover width is spread evenly over the sections. */
+  width: number;
+  /** Doors per section; 'auto' = 1 door up to 600 mm, 2 doors above. */
+  doors: 'auto' | 0 | 1 | 2;
+}
+
 export type DoorType = 'none' | 'hinged' | 'sliding';
 /** Hinged doors spread evenly across the full width, or configured per column. */
 export type DoorLayout = 'even' | 'perColumn';
@@ -56,6 +68,8 @@ export interface CabinetConfig {
   backThickness: number;
   /** Toe-kick height. 0 = no plinth. */
   plinthHeight: number;
+  construction: Construction;
+  sectionFit: SectionFit;
   columns: Column[];
   doorType: DoorType;
   doorLayout: DoorLayout;
