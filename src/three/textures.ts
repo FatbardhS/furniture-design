@@ -18,6 +18,10 @@ const STYLES: Record<string, GrainStyle> = {
   walnut: { seed: 23, rings: 16, contrast: 0.32, fibre: 0.07 },
   pine: { seed: 37, rings: 12, contrast: 0.3, fibre: 0.05 },
   ash: { seed: 41, rings: 26, contrast: 0.2, fibre: 0.09 },
+  sonoma: { seed: 53, rings: 18, contrast: 0.26, fibre: 0.08 },
+  wenge: { seed: 61, rings: 30, contrast: 0.38, fibre: 0.1 },
+  cherry: { seed: 67, rings: 20, contrast: 0.2, fibre: 0.05 },
+  beech: { seed: 71, rings: 34, contrast: 0.12, fibre: 0.1 },
 };
 
 function rng(seed: number) {

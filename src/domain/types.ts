@@ -28,6 +28,8 @@ export interface Column {
   items: InteriorItem[];
   /** Only used when doorLayout is 'perColumn'; a default is derived when missing. */
   doors?: ColumnDoors;
+  /** Outer width of this section in mm; sections without one share the width equally. */
+  width?: number;
 }
 
 /** One carcass split by dividers, or a row of separate cabinet boxes (each with its own sides). */
@@ -40,13 +42,17 @@ export interface SectionFit {
   width: number;
   /** Doors per section; 'auto' = 1 door up to 600 mm, 2 doors above. */
   doors: 'auto' | 0 | 1 | 2;
+  /** Where the narrower leftover section goes when the width isn't a multiple of `width`. */
+  remainderSide?: 'left' | 'right';
 }
 
 export type DoorType = 'none' | 'hinged' | 'sliding';
 /** Hinged doors spread evenly across the full width, or configured per column. */
 export type DoorLayout = 'even' | 'perColumn';
-export type HandleType = 'bar' | 'knob' | 'none';
-export type HandleFinish = 'chrome' | 'black' | 'brass';
+export type HandleType = 'bar' | 'square' | 'long' | 'knob' | 'edge' | 'gola' | 'none';
+export type HandleFinish = 'chrome' | 'inox' | 'black' | 'gunmetal' | 'brass' | 'gold' | 'white';
+/** Door / drawer front design. */
+export type FrontStyle = 'flat' | 'shaker' | 'fluted' | 'glass' | 'mirror';
 export type HingeType = 'standard' | 'softClose';
 export type SlideType = 'ballBearing' | 'softCloseUndermount';
 
@@ -76,6 +82,7 @@ export interface CabinetConfig {
   doorCount: number;
   handleType: HandleType;
   handleFinish: HandleFinish;
+  frontStyle: FrontStyle;
   hingeType: HingeType;
   slideType: SlideType;
   carcassFinish: Finish;
@@ -94,7 +101,9 @@ export interface PricingConfig {
   wastePercent: number;
   hinge: { standard: number; softClose: number };
   slidePair: { ballBearing: number; softCloseUndermount: number };
-  handle: { bar: number; knob: number; none: number };
+  handle: Record<HandleType, number>;
+  /** Extra cost per m² of door front for each design (milling, glass, mirror). */
+  frontStylePerM2: Record<FrontStyle, number>;
   hangingRodPerM: number;
   rodMount: number;
   shelfSupport: number;
@@ -158,6 +167,8 @@ export type Fixture =
       position: Vec3;
       orientation: 'vertical' | 'horizontal';
       length: number;
+      /** Which way the front's edge lies from the handle (+x / +y = 1), for edge-mounted profiles. */
+      side?: 1 | -1;
       motionKey?: string;
     };
 
@@ -185,7 +196,10 @@ export interface Layout {
     width: number;
     height: number;
     depth: number;
+    /** Interior width of the first section (all sections when they are equal). */
     columnWidth: number;
+    /** Interior width of every section. */
+    columnWidths: number[];
     floorY: number;
   };
   doors: {

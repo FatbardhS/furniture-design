@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBom } from './bom';
 import { defaultConfig, defaultPricing } from './catalog';
-import { applySectionFit, distributeShelves, placeNewItem } from './interior';
+import { applySectionFit, distributeShelves, placeNewItem, planSections } from './interior';
 import { buildLayout, hingesForDoor } from './layout';
 import { computeQuote } from './pricing';
 import { describePart, selectionFocus } from './selection';
@@ -154,6 +154,20 @@ describe('interior helpers', () => {
     expect(applySectionFit(box({ width: 3100, sectionFit: { enabled: true, width: 600, doors: 2 } })).columns).toHaveLength(5);
   });
 
+  it('turns the leftover width into its own narrower section', () => {
+    const cfg = applySectionFit(box({ width: 3000, construction: 'modules', sectionFit: { enabled: true, width: 1200, doors: 'auto' } }));
+    expect(cfg.columns.map((c) => c.width)).toEqual([1200, 1200, 600]);
+    // auto doors: pairs on the 120 cm sections, a single door on the 60 cm remainder
+    expect(cfg.columns.map((c) => c.doors?.count)).toEqual([2, 2, 1]);
+    const layout = buildLayout(cfg);
+    expect(layout.interior.columnWidths).toEqual([1200 - 36, 1200 - 36, 600 - 36]);
+    // the remainder section is a full module with its own sides, top and bottom
+    expect(layout.parts.filter((p) => p.category === 'side')).toHaveLength(6);
+    expect(planSections(3000, { enabled: true, width: 1200, doors: 'auto', remainderSide: 'left' }).widths).toEqual([600, 1200, 1200]);
+    // leftovers under 30 cm are spread instead
+    expect(planSections(2500, { enabled: true, width: 1200, doors: 'auto' })).toMatchObject({ widths: [1250, 1250], spread: 100 });
+  });
+
   it('distributes shelves evenly above drawers', () => {
     const col = distributeShelves(
       { id: 'c', items: [{ id: 'd', type: 'drawer', y: 0, height: 200 }, { id: 's1', type: 'shelf', y: 900 }, { id: 's2', type: 'shelf', y: 950 }] },
@@ -166,6 +180,16 @@ describe('interior helpers', () => {
 });
 
 describe('pricing', () => {
+  it('charges the door design per m² of styled fronts', () => {
+    const cfg = box({ doorType: 'hinged', doorCount: 2, frontStyle: 'shaker' });
+    const pricing = defaultPricing();
+    const bom = buildBom(cfg, buildLayout(cfg), pricing);
+    expect(bom.styledFrontArea).toBeGreaterThan(0.9);
+    const line = computeQuote(bom, pricing).materialLines.find((l) => l.label.startsWith('Dizajni'))!;
+    expect(line.amount).toBeCloseTo(bom.styledFrontArea * pricing.frontStylePerM2.shaker, 1); // rounded to cents
+  });
+
+
   it('adds labor, installation and VAT', () => {
     const cfg = box();
     const pricing = { ...defaultPricing(), laborMode: 'fixed' as const, laborValue: 100, installationFee: 50, vatPercent: 20 };

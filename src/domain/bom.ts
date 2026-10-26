@@ -1,5 +1,5 @@
 import { HANDLE_FINISH_LABELS, HANDLE_LABELS, HINGE_LABELS, materialById, SHEET, SLIDE_LABELS } from './catalog';
-import type { CabinetConfig, Layout, Part, PartMaterial, PricingConfig } from './types';
+import type { CabinetConfig, Layout, Part, PartMaterial, PricingConfig, FrontStyle } from './types';
 
 /** Extra edge banding per banded edge, for trimming the overhang at both ends. */
 export const BANDING_TRIM_MM = 30;
@@ -52,6 +52,9 @@ export interface Bom {
   cutList: CutListRow[];
   totalBoardArea: number;
   partCount: number;
+  frontStyle: FrontStyle;
+  /** Area (m²) of the fronts that get the chosen design: doors, plus drawer fronts for milled designs. */
+  styledFrontArea: number;
 }
 
 const round = (v: number, dp = 3) => Math.round(v * 10 ** dp) / 10 ** dp;
@@ -166,5 +169,11 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
     cutList: buildCutList(cfg, parts),
     totalBoardArea: round(boards.reduce((s, b) => s + b.netArea, 0)),
     partCount: parts.length,
+    frontStyle: cfg.frontStyle,
+    styledFrontArea: round(
+      parts
+        .filter((p) => p.category === 'door' || (p.category === 'drawerFront' && (cfg.frontStyle === 'shaker' || cfg.frontStyle === 'fluted')))
+        .reduce((s, p) => s + partArea(p), 0),
+    ),
   };
 }

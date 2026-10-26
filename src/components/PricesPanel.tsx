@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { MATERIALS } from '../domain/catalog';
-import type { LaborMode, PricingConfig } from '../domain/types';
+import { FRONT_STYLE_LABELS, HANDLE_LABELS, MATERIALS } from '../domain/catalog';
+import type { LaborMode, PricingConfig, FrontStyle, HandleType } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Field, NumberInput, Section, Segmented } from './ui';
 
@@ -66,14 +66,36 @@ export function PricesPanel({ c }: { c: Configurator }) {
         <PriceRow label="Pagllama — mbyllje e butë" value={p.hinge.softClose} unit={cur} onChange={(v) => nested('hinge', 'softClose', v)} />
         <PriceRow label="Shina — me sfera (palë)" value={p.slidePair.ballBearing} unit={cur} onChange={(v) => nested('slidePair', 'ballBearing', v)} />
         <PriceRow label="Shina — nën sirtar (palë)" value={p.slidePair.softCloseUndermount} unit={cur} onChange={(v) => nested('slidePair', 'softCloseUndermount', v)} />
-        <PriceRow label="Dorezë shufër" value={p.handle.bar} unit={cur} onChange={(v) => nested('handle', 'bar', v)} />
-        <PriceRow label="Dorezë e rrumbullakët" value={p.handle.knob} unit={cur} onChange={(v) => nested('handle', 'knob', v)} />
-        <PriceRow label="Mekanizëm push-to-open" value={p.handle.none} unit={cur} onChange={(v) => nested('handle', 'none', v)} />
+        {(Object.keys(HANDLE_LABELS) as HandleType[]).map((k) => (
+          <PriceRow
+            key={k}
+            label={k === 'none' ? 'Mekanizëm push-to-open' : HANDLE_LABELS[k]}
+            highlight={config.handleType === k}
+            value={p.handle[k] ?? 0}
+            unit={cur}
+            onChange={(v) => nested('handle', k, v)}
+          />
+        ))}
         <PriceRow label="Shufër varëse (për m)" value={p.hangingRodPerM} unit={cur} onChange={(hangingRodPerM) => patchPricing({ hangingRodPerM })} />
         <PriceRow label="Mbajtëse shufre" value={p.rodMount} unit={cur} onChange={(rodMount) => patchPricing({ rodMount })} />
         <PriceRow label="Kunj mbajtës rafti" value={p.shelfSupport} unit={cur} onChange={(shelfSupport) => patchPricing({ shelfSupport })} />
         <PriceRow label="Shinë rrëshqitëse (për m)" value={p.slidingTrackPerM} unit={cur} onChange={(slidingTrackPerM) => patchPricing({ slidingTrackPerM })} />
         <PriceRow label="Set rrotash (për derë)" value={p.slidingRollerSet} unit={cur} onChange={(slidingRollerSet) => patchPricing({ slidingRollerSet })} />
+      </Section>
+
+      <Section title={`Dizajni i dyerve · ${cur}/m² shtesë`}>
+        {(Object.keys(FRONT_STYLE_LABELS) as FrontStyle[])
+          .filter((k) => k !== 'flat')
+          .map((k) => (
+            <PriceRow
+              key={k}
+              label={FRONT_STYLE_LABELS[k]}
+              highlight={config.frontStyle === k}
+              value={p.frontStylePerM2[k] ?? 0}
+              unit={cur}
+              onChange={(v) => patchPricing({ frontStylePerM2: { ...p.frontStylePerM2, [k]: v } })}
+            />
+          ))}
       </Section>
 
       <Section title="Puna & shërbimet">

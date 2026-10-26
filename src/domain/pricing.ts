@@ -1,3 +1,4 @@
+import { FRONT_STYLE_LABELS } from './catalog';
 import type { Bom } from './bom';
 import type { PricingConfig } from './types';
 
@@ -39,6 +40,15 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
     detail: `${bom.edgeBandingM.toFixed(2)} m × ${pricing.edgeBandingPerM.toFixed(2)}`,
     amount: money(bom.edgeBandingM * pricing.edgeBandingPerM),
   });
+
+  const styleRate = pricing.frontStylePerM2?.[bom.frontStyle] ?? 0;
+  if (styleRate > 0 && bom.styledFrontArea > 0) {
+    materialLines.push({
+      label: `Dizajni i fronteve — ${FRONT_STYLE_LABELS[bom.frontStyle]}`,
+      detail: `${bom.styledFrontArea.toFixed(2)} m² × ${styleRate.toFixed(2)}`,
+      amount: money(bom.styledFrontArea * styleRate),
+    });
+  }
 
   const materialSubtotal = money(materialLines.reduce((s, l) => s + l.amount, 0));
   const hardwareSubtotal = money(bom.hardware.reduce((s, h) => s + h.total, 0));

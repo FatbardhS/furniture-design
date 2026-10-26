@@ -1,7 +1,7 @@
 import { materialById, SHEET, SLIDE_LENGTHS } from './catalog';
 import { DEFAULT_DRAWER_HEIGHT, itemInterval, sortItems } from './interior';
 import { fmtLen } from './units';
-import type { CabinetConfig, Column, ColumnDoors, Fixture, InteriorItem, Layout, Part, Warning } from './types';
+import type { CabinetConfig, Column, ColumnDoors, Fixture, HandleType, InteriorItem, Layout, Part, Warning } from './types';
 
 /** Gap between adjacent doors and around overlay doors. */
 export const DOOR_GAP = 3;
@@ -48,11 +48,42 @@ export function columnDoors(col: Column, index: number, columnCount: number, col
   return col.doors ?? { count: columnWidth > 600 ? 2 : 1, hinge: index < columnCount / 2 ? 'left' : 'right', split: null };
 }
 
+/**
+ * Outer width of each section in mm, summing to the overall width. Sections without an explicit
+ * width share equally; explicit widths are scaled if the overall width changed since.
+ */
+export function sectionWidths(cfg: CabinetConfig): number[] {
+  const n = Math.max(1, cfg.columns.length);
+  const raw = cfg.columns.length ? cfg.columns.map((c) => c.width ?? cfg.width / n) : [cfg.width];
+  const sum = raw.reduce((s, v) => s + v, 0);
+  return raw.map((v) => (v * cfg.width) / sum);
+}
+
 /** Ids of the 3D parts / fixtures an interior item turns into (see the column loop in buildLayout). */
 export function itemPartIds(it: InteriorItem): string[] {
   if (it.type === 'shelf') return [`shelf-${it.id}`];
   if (it.type === 'rod') return [`rod-${it.id}`];
   return [`dfront-${it.id}`, `dside-${it.id}--1`, `dside-${it.id}-1`, `dend-${it.id}--1`, `dend-${it.id}-1`, `dbottom-${it.id}`];
+}
+
+/** Edge pulls and gola profiles mount on the front's edge rather than inset on its face. */
+const onEdge = (type: HandleType) => type === 'edge' || type === 'gola';
+
+/** Handle length in mm for a front that is `run` mm long in the handle's direction. */
+function handleLength(type: HandleType, run: number, barShare: number): number {
+  switch (type) {
+    case 'bar':
+    case 'square':
+      return barLength(Math.min(320, run * barShare));
+    case 'long':
+      return Math.min(1000, Math.round(run * 0.55));
+    case 'edge':
+      return Math.min(200, Math.round(run * 0.4));
+    case 'gola':
+      return run - 10;
+    default:
+      return 0;
+  }
 }
 
 const barLength = (space: number) => [...BAR_LENGTHS].reverse().find((l) => l <= space) ?? BAR_LENGTHS[0];
@@ -81,12 +112,15 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   const n = Math.max(1, cfg.columns.length);
   // Separate modules: every section is its own box, so neighbours stand side panel to side panel.
   const modular = cfg.construction === 'modules' && n > 1;
-  const moduleW = W / n;
-  const cw = modular ? moduleW - 2 * T : (Wi - (n - 1) * T) / n;
-  const colLeft = (i: number) => (modular ? -W / 2 + i * moduleW + T : -Wi / 2 + i * (cw + T));
+  // Sections may differ in width (e.g. 120 + 120 + 60 cm). `sw` are outer shares of W; with
+  // dividers the interior space is split in the same proportions.
+  const sw = sectionWidths(cfg);
+  const before = (arr: number[], i: number) => arr.slice(0, i).reduce((s, v) => s + v, 0);
+  const cws = sw.map((s) => (modular ? s - 2 * T : ((Wi - (n - 1) * T) * s) / W));
+  const colLeft = (i: number) => (modular ? -W / 2 + before(sw, i) + T : -Wi / 2 + before(cws, i) + i * T);
   /** x of the line between section i−1 and i: a divider's centre, or the joint between modules. */
   const boundary = (i: number) =>
-    i <= 0 ? -W / 2 : i >= n ? W / 2 : modular ? -W / 2 + i * moduleW : colLeft(i) - T / 2;
+    i <= 0 ? -W / 2 : i >= n ? W / 2 : modular ? -W / 2 + before(sw, i) : colLeft(i) - T / 2;
 
 
   // --- Carcass ---------------------------------------------------------------
@@ -190,7 +224,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       thickness: T,
       bandLong: 1,
       bandShort: 0,
-      position: [colLeft(i) + cw + T / 2, floorY + Hi / 2, zMid],
+      position: [colLeft(i) + cws[i] + T / 2, floorY + Hi / 2, zMid],
       size: [T, Hi, Dc],
       grain: 'y',
     });
@@ -200,6 +234,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   const drawerFrontZ = zFront - T / 2 - (hasDoors ? INNER_DRAWER_SETBACK : 0);
 
   cfg.columns.forEach((col, ci) => {
+    const cw = cws[ci];
     const cx = colLeft(ci) + cw / 2;
     const label = `seksionin ${ci + 1}`;
     const sorted = sortItems(col.items);
@@ -352,9 +387,11 @@ export function buildLayout(cfg: CabinetConfig): Layout {
           fixtures.push({
             kind: 'handle',
             id: `dhandle-${it.id}`,
-            position: [cx, frontY, drawerFrontZ + T / 2],
+            // Edge pulls and gola profiles sit on the drawer's top edge; others are centred.
+            position: [cx, onEdge(cfg.handleType) ? frontY + frontH / 2 : frontY, drawerFrontZ + T / 2],
             orientation: 'horizontal',
-            length: cfg.handleType === 'bar' ? barLength(frontW * 0.5) : 0,
+            length: handleLength(cfg.handleType, frontW, 0.5),
+            side: 1,
             motionKey: key,
           });
         }
@@ -404,17 +441,19 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         column,
       });
       if (cfg.handleType !== 'none') {
-        const len = cfg.handleType === 'bar' ? barLength(Math.min(320, dh * 0.3)) : 0;
+        const len = handleLength(cfg.handleType, dh, 0.3);
         const comfy = dh > 1300 ? Math.min(y, 1050) : y;
         const handleY =
           handleAt === 'high' ? Math.min(y1 - 80 - len / 2, Math.max(y, 1050)) :
           handleAt === 'low' ? Math.max(y0 + 80 + len / 2, Math.min(y, 1050)) :
           comfy;
+        const edge = onEdge(cfg.handleType);
         fixtures.push({
           kind: 'handle',
           id: `handle-${key}`,
-          position: [hingeLeft ? x1 - 40 : x0 + 40, handleY, z + T / 2],
+          position: [hingeLeft ? x1 - (edge ? 0 : 40) : x0 + (edge ? 0 : 40), cfg.handleType === 'gola' ? y : handleY, z + T / 2],
           orientation: 'vertical',
+          side: hingeLeft ? 1 : -1,
           length: len,
           motionKey: key,
         });
@@ -423,7 +462,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
 
     if (cfg.doorLayout === 'perColumn') {
       cfg.columns.forEach((col, ci) => {
-        const d = columnDoors(col, ci, n, cw);
+        const d = columnDoors(col, ci, n, cws[ci]);
         if (!d.count) return;
         // Outer doors cover the side panel fully; doors meeting at a divider each cover half of it.
         const x0 = ci === 0 ? -W / 2 + 2 : boundary(ci) + DOOR_GAP / 2;
@@ -528,9 +567,14 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         fixtures.push({
           kind: 'handle',
           id: `handle-${key}`,
-          position: [rightEdge ? x + dw / 2 - 70 : x - dw / 2 + 70, Math.min(y, 1050), z + T / 2],
+          position: [
+            rightEdge ? x + dw / 2 - (onEdge(cfg.handleType) ? 0 : 70) : x - dw / 2 + (onEdge(cfg.handleType) ? 0 : 70),
+            cfg.handleType === 'gola' ? y : Math.min(y, 1050),
+            z + T / 2,
+          ],
           orientation: 'vertical',
-          length: cfg.handleType === 'bar' ? barLength(Math.min(320, dh * 0.3)) : 0,
+          length: handleLength(cfg.handleType, dh, 0.3),
+          side: rightEdge ? 1 : -1,
           motionKey: key,
         });
       }
@@ -553,10 +597,11 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       focus: { tab: 'size', field: 'plinth', partIds: idsOf('side', 'plinth') },
     });
   }
-  if (cw < 250) {
+  const narrowest = Math.min(...cws);
+  if (narrowest < 250) {
     warnings.unshift({
       level: 'warn',
-      message: `Seksionet janë vetëm ${cm(cw)} të gjera — përdorni më pak seksione.`,
+      message: `Seksionet janë vetëm ${cm(narrowest)} të gjera — përdorni më pak seksione.`,
       focus: { tab: 'size', field: 'sections', partIds: idsOf('divider', 'side') },
     });
   }
@@ -565,7 +610,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     parts,
     fixtures,
     warnings,
-    interior: { width: modular ? n * cw : Wi, height: Hi, depth: Dc, columnWidth: cw, floorY },
+    interior: { width: modular ? before(cws, n) : Wi, height: Hi, depth: Dc, columnWidth: cws[0], columnWidths: cws, floorY },
     doors: doorInfo,
   };
 }

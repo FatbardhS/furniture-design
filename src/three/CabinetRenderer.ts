@@ -4,7 +4,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { materialById } from '../domain/catalog';
 import { fmtLen } from '../domain/units';
-import type { Axis, CabinetConfig, Finish, HandleFinish, Layout, Motion, Part, Unit, Vec3 } from '../domain/types';
+import type { Axis, CabinetConfig, Finish, HandleFinish, Layout, Motion, Part, Unit, Vec3, FrontStyle, HandleType } from '../domain/types';
 import { WOOD_TILE, woodTextures } from './textures';
 
 const MM = 0.001;
@@ -27,8 +27,12 @@ interface MotionGroup {
 
 const HANDLE_FINISHES: Record<HandleFinish, THREE.MeshPhysicalMaterialParameters> = {
   chrome: { color: '#e4e4e4', metalness: 1, roughness: 0.18 },
+  inox: { color: '#c9ccce', metalness: 1, roughness: 0.45 },
   black: { color: '#1b1b1b', metalness: 0.5, roughness: 0.45 },
+  gunmetal: { color: '#4a4d52', metalness: 0.85, roughness: 0.35 },
   brass: { color: '#c19a56', metalness: 1, roughness: 0.3 },
+  gold: { color: '#d8b046', metalness: 1, roughness: 0.22 },
+  white: { color: '#f2f2f0', metalness: 0, roughness: 0.4 },
 };
 
 /**
@@ -141,11 +145,11 @@ export class CabinetRenderer {
 
     for (const part of layout.parts) {
       const finish = part.material === 'front' ? cfg.frontFinish : cfg.carcassFinish;
-      const mesh = this.partMesh(part, finish);
+      const mesh = this.partMesh(part, finish, cfg.frontStyle);
       this.attach(mesh, part.position, part.motion, previous);
     }
     for (const fx of layout.fixtures) {
-      const obj = fx.kind === 'rod' ? this.rodMesh(fx.length) : this.handleMesh(fx.length, fx.orientation, cfg.handleFinish);
+      const obj = fx.kind === 'rod' ? this.rodMesh(fx.length) : this.handleMesh(cfg.handleType, fx.length, fx.orientation, cfg.handleFinish, fx.side ?? 1);
       const motion = fx.motionKey ? this.motions.get(fx.motionKey)?.motion : undefined;
       obj.userData.partId = fx.id;
       this.attach(obj, fx.position, motion, previous);
@@ -258,7 +262,7 @@ export class CabinetRenderer {
     mg.group.add(obj);
   }
 
-  private partMesh(part: Part, finish: Finish): THREE.Mesh {
+  private partMesh(part: Part, finish: Finish, style: FrontStyle): THREE.Mesh {
     const [sx, sy, sz] = part.size.map((s) => s * MM);
     const geo = new THREE.BoxGeometry(sx, sy, sz);
     worldScaleUVs(geo, part.grain, hashOffset(part.id));
@@ -273,6 +277,7 @@ export class CabinetRenderer {
       const edges = new THREE.EdgesGeometry(geo);
       this.geometries.push(edges);
       mesh.add(new THREE.LineSegments(edges, this.seamMaterial()));
+      this.decorateFront(mesh, part, style);
     }
     return mesh;
   }
@@ -331,40 +336,126 @@ export class CabinetRenderer {
     return group;
   }
 
-  /** Handle anchored at its mounting point on the front face, protruding towards +z. */
-  private handleMesh(lengthMm: number, orientation: 'vertical' | 'horizontal', finish: HandleFinish): THREE.Object3D {
+  /**
+   * Handle anchored at its mounting point on the front face, protruding towards +z. Built with
+   * its length along y and the front's edge towards +x·side, then turned for horizontal handles.
+   */
+  private handleMesh(
+    type: HandleType,
+    lengthMm: number,
+    orientation: 'vertical' | 'horizontal',
+    finish: HandleFinish,
+    side: 1 | -1,
+  ): THREE.Object3D {
     const group = new THREE.Group();
     const mat = this.handleMaterial(finish);
+    const L = lengthMm * MM;
     const standoff = 0.026;
-    if (lengthMm <= 0) {
+    const add = (geo: THREE.BufferGeometry, x = 0, y = 0, z = 0) => {
+      this.geometries.push(geo);
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      group.add(m);
+    };
+
+    if (type === 'knob' || L <= 0) {
       const stem = new THREE.CylinderGeometry(0.007, 0.009, standoff, 20);
       stem.rotateX(Math.PI / 2);
-      stem.translate(0, 0, standoff / 2);
+      add(stem, 0, 0, standoff / 2);
       const head = new THREE.SphereGeometry(0.015, 24, 16);
       head.scale(1, 1, 0.7);
-      head.translate(0, 0, standoff + 0.004);
-      this.geometries.push(stem, head);
-      group.add(new THREE.Mesh(stem, mat), new THREE.Mesh(head, mat));
+      add(head, 0, 0, standoff + 0.004);
+    } else if (type === 'square') {
+      add(new THREE.BoxGeometry(0.012, L + 0.03, 0.012), 0, 0, standoff);
+      for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.01, 0.01, standoff), 0, (s * L) / 2, standoff / 2);
+    } else if (type === 'edge') {
+      // Aluminium pull on the front's edge: a plate on the face plus a lip to hook fingers behind.
+      add(new THREE.BoxGeometry(0.022, L, 0.002), -side * 0.011, 0, 0.001);
+      add(new THREE.BoxGeometry(0.003, L, 0.024), -side * 0.0015, 0, 0.012);
+    } else if (type === 'gola') {
+      // Recessed finger channel running along the edge.
+      add(new THREE.BoxGeometry(0.026, L, 0.004), -side * 0.013, 0, 0.0005);
     } else {
-      const len = (lengthMm + 30) * MM;
-      const bar = new THREE.CylinderGeometry(0.006, 0.006, len, 20);
-      if (orientation === 'horizontal') bar.rotateZ(Math.PI / 2);
-      bar.translate(0, 0, standoff);
-      const post = new THREE.CylinderGeometry(0.005, 0.005, standoff, 16);
-      post.rotateX(Math.PI / 2);
-      post.translate(0, 0, standoff / 2);
-      this.geometries.push(bar, post);
-      group.add(new THREE.Mesh(bar, mat));
+      // Round bar ('bar') or the longer, slightly thicker 'long' bar.
+      const r = type === 'long' ? 0.007 : 0.006;
+      add(new THREE.CylinderGeometry(r, r, L + 0.03, 20), 0, 0, standoff);
       for (const s of [-1, 1]) {
-        const p = new THREE.Mesh(post, mat);
-        const off = (s * lengthMm * MM) / 2;
-        if (orientation === 'horizontal') p.position.x = off;
-        else p.position.y = off;
-        group.add(p);
+        const post = new THREE.CylinderGeometry(0.005, 0.005, standoff, 16);
+        post.rotateX(Math.PI / 2);
+        add(post, 0, (s * L) / 2, standoff / 2);
       }
     }
+    // Rotating +90° about z puts the length along x and the edge side (+x) on top (+y).
+    if (orientation === 'horizontal') group.rotation.z = Math.PI / 2;
     group.traverse((o) => (o.castShadow = true));
     return group;
+  }
+
+  /** Add the chosen front design to a door or drawer front: frame, flutes, glass or mirror. */
+  private decorateFront(mesh: THREE.Mesh, part: Part, style: FrontStyle) {
+    if (style === 'flat') return;
+    const isDoor = part.category === 'door';
+    if ((style === 'glass' || style === 'mirror') && !isDoor) return;
+    const [sx, sy, sz] = part.size.map((s) => s * MM);
+    const face = sz / 2;
+    const mat = mesh.material as THREE.Material;
+    const add = (geo: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, outline = false) => {
+      this.geometries.push(geo);
+      const m = new THREE.Mesh(geo, material);
+      m.position.set(x, y, z);
+      m.castShadow = material.transparent !== true;
+      m.receiveShadow = true;
+      if (outline) {
+        // Same faint seam as the front's own edges, so a same-colour frame still reads.
+        const edges = new THREE.EdgesGeometry(geo);
+        this.geometries.push(edges);
+        m.add(new THREE.LineSegments(edges, this.seamMaterial()));
+      }
+      mesh.add(m);
+    };
+    const frame = (f: number, depth: number, z: number) => {
+      for (const s of [-1, 1]) {
+        add(new THREE.BoxGeometry(f, sy, depth), mat, s * (sx / 2 - f / 2), 0, z, true);
+        add(new THREE.BoxGeometry(sx - 2 * f, f, depth), mat, 0, s * (sy / 2 - f / 2), z, true);
+      }
+    };
+
+    if (style === 'shaker') {
+      frame(Math.min(0.07, 0.16 * Math.min(sx, sy)), 0.006, face + 0.003);
+    } else if (style === 'fluted') {
+      // Half-round vertical ribs every 3 cm.
+      const count = Math.max(1, Math.floor((sx - 0.02) / 0.03));
+      const pitch = (sx - 0.02) / count;
+      const rib = new THREE.CylinderGeometry(0.009, 0.009, sy - 0.03, 10);
+      rib.scale(1, 1, 0.45);
+      this.geometries.push(rib);
+      for (let i = 0; i < count; i++) {
+        const m = new THREE.Mesh(rib, mat);
+        m.position.set(-sx / 2 + 0.01 + pitch * (i + 0.5), 0, face);
+        mesh.add(m);
+      }
+    } else if (style === 'glass') {
+      // A full-thickness frame around a glass pane: the slab itself becomes the glass.
+      mesh.material = this.specialMaterial('glass');
+      mesh.castShadow = false;
+      frame(Math.min(0.065, 0.16 * Math.min(sx, sy)), sz + 0.001, 0);
+    } else if (style === 'mirror') {
+      add(new THREE.BoxGeometry(sx - 0.05, sy - 0.05, 0.003), this.specialMaterial('mirror'), 0, 0, face + 0.0015);
+    }
+  }
+
+  private specialMaterial(kind: 'glass' | 'mirror'): THREE.Material {
+    this.usedMaterials.add(kind);
+    let mat = this.materials.get(kind);
+    if (!mat) {
+      mat =
+        kind === 'glass'
+          ? new THREE.MeshPhysicalMaterial({ color: '#d6e6ea', roughness: 0.08, transparent: true, opacity: 0.32, depthWrite: false })
+          : // Reflections of the dim studio scene alone read as smoked glass; a cool glow keeps it a mirror.
+            new THREE.MeshPhysicalMaterial({ color: '#eef3f5', metalness: 0.9, roughness: 0.06, emissive: '#8fa3ad', emissiveIntensity: 0.45 });
+      this.materials.set(kind, mat);
+    }
+    return mat;
   }
 
   private buildDimensions(cfg: CabinetConfig, unit: Unit) {

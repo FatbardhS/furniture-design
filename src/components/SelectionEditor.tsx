@@ -50,7 +50,7 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
     const ci = selection.column;
     title = ci != null ? `Derë · Seksioni ${ci + 1}` : 'Derë';
     if (config.doorLayout === 'perColumn' && ci != null) {
-      const d = columnDoors(config.columns[ci], ci, config.columns.length, layout.interior.columnWidth);
+      const d = columnDoors(config.columns[ci], ci, config.columns.length, layout.interior.columnWidths[ci]);
       body = (
         <>
           <Segmented<'0' | '1' | '2'>

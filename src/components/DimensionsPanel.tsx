@@ -1,5 +1,5 @@
 import { MAX_SINGLE_DOOR, STANDARD_SECTION_WIDTHS } from '../domain/catalog';
-import { newColumn, sectionCountFor } from '../domain/interior';
+import { fitDoorsFor, MIN_REMAINDER_SECTION, newColumn, planSections } from '../domain/interior';
 import { fmtLen, toUnit } from '../domain/units';
 import type { ActiveFocus, Construction, SectionFit } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
@@ -14,13 +14,15 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
   const setColumns = (n: number) => {
     const cols = [...config.columns];
     while (cols.length < n) cols.push(newColumn(interior.height, config.thickness));
-    patch({ columns: cols.slice(0, n) });
+    // Changing the count by hand goes back to equal sections.
+    patch({ columns: cols.slice(0, n).map(({ width: _w, ...col }) => col) });
   };
   const setFit = (p: Partial<SectionFit>) => patch({ sectionFit: { ...fit, ...p } });
 
-  const fitCount = sectionCountFor(config.width, fit.width);
-  const fitSectionW = config.width / fitCount;
-  const fitDoors = fit.doors === 'auto' ? (fitSectionW > MAX_SINGLE_DOOR ? 2 : 1) : fit.doors;
+  const plan = planSections(config.width, fit);
+  const widths = interior.columnWidths;
+  const equal = widths.every((w) => Math.abs(w - widths[0]) < 1);
+  const innerW = equal ? fmtLen(widths[0], unit) : `${fmtLen(Math.min(...widths), unit)} – ${fmtLen(Math.max(...widths), unit)}`;
 
   return (
     <>
@@ -87,15 +89,36 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
                 onChange={(v) => setFit({ doors: v === 'auto' ? 'auto' : (+v as 0 | 1 | 2) })}
               />
             </Field>
-            <p className="rounded-md bg-accent-50 px-2.5 py-2 text-xs leading-relaxed text-accent-700">
-              <strong>{fitCount}</strong> {fitCount === 1 ? 'seksion' : 'seksione'} × {fmtLen(fitSectionW, unit)}
-              {' · '}
-              {fitDoors === 0 ? 'pa dyer' : `nga ${fitDoors} ${fitDoors === 1 ? 'derë' : 'dyer'} (~${fmtLen(fitSectionW / fitDoors, unit)} për derë)`}
-              {fit.doors === 'auto' && <span className="block text-accent-600">Auto: 1 derë deri në {fmtLen(MAX_SINGLE_DOOR, unit)}, 2 dyer mbi këtë.</span>}
-            </p>
+            {plan.remainder > 0 && (
+              <Field label="Seksioni i mbetur">
+                <Segmented<'left' | 'right'>
+                  value={fit.remainderSide ?? 'right'}
+                  options={[
+                    { value: 'left', label: 'Majtas' },
+                    { value: 'right', label: 'Djathtas' },
+                  ]}
+                  onChange={(remainderSide) => setFit({ remainderSide })}
+                />
+              </Field>
+            )}
+            <div className="space-y-1 rounded-md bg-accent-50 px-2.5 py-2 text-xs leading-relaxed text-accent-700">
+              <div>
+                <strong>{plan.widths.length}</strong> {plan.widths.length === 1 ? 'seksion' : 'seksione'}:{' '}
+                {plan.widths.map((w) => fmtLen(w, unit)).join(' + ')}
+              </div>
+              {plan.remainder > 0 && (
+                <div>Mbetja {fmtLen(plan.remainder, unit)} u bë seksion më vete (me {fitDoorsFor(plan.remainder, fit.doors) || 'pa'} {fitDoorsFor(plan.remainder, fit.doors) === 1 ? 'derë' : 'dyer'}).</div>
+              )}
+              {plan.spread > 0 && (
+                <div>
+                  Mbetja {fmtLen(plan.spread, unit)} është nën {fmtLen(MIN_REMAINDER_SECTION, unit)}, prandaj u shpërnda në seksionet e tjera.
+                </div>
+              )}
+              {fit.doors === 'auto' && <div className="text-accent-600">Auto: 1 derë deri në {fmtLen(MAX_SINGLE_DOOR, unit)}, 2 dyer mbi këtë.</div>}
+            </div>
           </>
         ) : (
-          <Field label="Numri i seksioneve" hint={`secili ${fmtLen(interior.columnWidth, unit)} brenda`}>
+          <Field label="Numri i seksioneve" hint={`secili ${innerW} brenda`}>
             <div className="flex items-center gap-2">
               <Button onClick={() => setColumns(config.columns.length - 1)} disabled={config.columns.length <= 1}>
                 <Icon name="minus" />
@@ -111,7 +134,7 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
         </Flag>
 
         <div className="grid grid-cols-3 gap-2">
-          <Stat label="Gjer. brenda" value={fmtLen(interior.columnWidth, unit)} sub="për seksion" />
+          <Stat label="Gjer. brenda" value={innerW} sub="për seksion" />
           <Stat label="Lart. brenda" value={fmtLen(interior.height, unit)} />
           <Stat label="Thell. brenda" value={fmtLen(interior.depth, unit)} />
         </div>

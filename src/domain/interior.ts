@@ -1,5 +1,5 @@
 import { MAX_SINGLE_DOOR, uid } from './catalog';
-import type { CabinetConfig, Column, InteriorItem, ItemType } from './types';
+import type { CabinetConfig, Column, InteriorItem, ItemType, SectionFit } from './types';
 
 export const ROD_CLEARANCE = 15;
 export const DEFAULT_DRAWER_HEIGHT = 200;
@@ -93,24 +93,55 @@ export function newColumn(interiorHeight: number, thickness: number): Column {
   };
 }
 
-/** How many standard-width sections fit in the overall width (at least one). */
-export const sectionCountFor = (width: number, standard: number) => Math.max(1, Math.floor(width / Math.max(100, standard)));
+/** Leftovers narrower than this are spread over the sections instead of becoming their own. */
+export const MIN_REMAINDER_SECTION = 300;
+
+export interface SectionPlan {
+  /** Outer width of every section, left to right. */
+  widths: number[];
+  /** Width of the extra leftover section, or 0 if there is none. */
+  remainder: number;
+  /** Leftover too narrow for its own section, spread over the others instead. */
+  spread: number;
+}
 
 /**
- * Apply the "fit sections to a standard width" setting: as many sections as fit, leftover width
- * spread evenly, each section given the configured doors. Existing column interiors are kept.
+ * As many standard-width sections as fit. Whatever is left becomes one more, narrower section
+ * (e.g. 300 cm at 120 cm → 120 + 120 + 60), unless it is under 30 cm, then it is spread evenly.
+ */
+export function planSections(width: number, fit: SectionFit): SectionPlan {
+  const std = Math.max(100, fit.width);
+  const full = Math.floor(width / std);
+  const rest = width - full * std;
+  if (full === 0) return { widths: [width], remainder: 0, spread: 0 };
+  if (rest < 1) return { widths: Array(full).fill(std), remainder: 0, spread: 0 };
+  if (rest >= MIN_REMAINDER_SECTION) {
+    const fulls: number[] = Array(full).fill(std);
+    return { widths: fit.remainderSide === 'left' ? [rest, ...fulls] : [...fulls, rest], remainder: rest, spread: 0 };
+  }
+  return { widths: Array(full).fill(width / full), remainder: 0, spread: rest };
+}
+
+/** Doors a section gets under the fit setting: 'auto' = 1 door up to 60 cm, 2 above. */
+export const fitDoorsFor = (sectionWidth: number, doors: SectionFit['doors']): 0 | 1 | 2 =>
+  doors === 'auto' ? (sectionWidth > MAX_SINGLE_DOOR ? 2 : 1) : doors;
+
+/**
+ * Apply the "fit sections to a standard width" setting: lay out the planned sections (including a
+ * narrower leftover one) and give each its doors. Existing section interiors are kept.
  */
 export function applySectionFit(cfg: CabinetConfig): CabinetConfig {
   const { sectionFit: fit } = cfg;
   if (!fit.enabled) return cfg;
-  const n = sectionCountFor(cfg.width, fit.width);
+  const { widths } = planSections(cfg.width, fit);
+  const n = widths.length;
   const interiorHeight = cfg.height - cfg.plinthHeight - 2 * cfg.thickness;
-  const sectionW = cfg.width / n;
-  const count = fit.doors === 'auto' ? (sectionW > MAX_SINGLE_DOOR ? 2 : 1) : fit.doors;
 
-  const columns = Array.from({ length: n }, (_, i): Column => {
+  const columns = widths.map((width, i): Column => {
     const col = cfg.columns[i] ?? newColumn(interiorHeight, cfg.thickness);
-    return { ...col, doors: { count, hinge: i < n / 2 ? 'left' : 'right', split: col.doors?.split ?? null } };
+    const count = fitDoorsFor(width, fit.doors);
+    return { ...col, width, doors: { count, hinge: i < n / 2 ? 'left' : 'right', split: col.doors?.split ?? null } };
   });
-  return { ...cfg, columns, doorType: count ? 'hinged' : 'none', doorLayout: 'perColumn' };
+  const anyDoors = columns.some((c) => c.doors!.count > 0);
+  return { ...cfg, columns, doorType: anyDoors ? 'hinged' : 'none', doorLayout: 'perColumn' };
 }

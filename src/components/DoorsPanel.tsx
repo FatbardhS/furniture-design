@@ -1,10 +1,21 @@
-import { HANDLE_LABELS } from '../domain/catalog';
+import { HANDLE_FINISH_LABELS, HANDLE_LABELS } from '../domain/catalog';
 import { columnDoors } from '../domain/layout';
 import { fmtLen } from '../domain/units';
 import type { ActiveFocus, ColumnDoors, DoorLayout, DoorType, HandleFinish, HandleType } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon } from './icons';
 import { Button, Field, Flag, LengthInput, Section, Segmented, Select, Stat } from './ui';
+
+/** Swatch backgrounds hinting at each metal / colour finish. */
+const HANDLE_SWATCHES: Record<HandleFinish, string> = {
+  chrome: 'linear-gradient(90deg, #9da3a8, #f4f6f7 45%, #b9bec2)',
+  inox: 'linear-gradient(90deg, #a8acaf, #d9dbdd 50%, #b4b7ba)',
+  black: '#1b1b1b',
+  gunmetal: 'linear-gradient(90deg, #36393d, #6a6e73 50%, #3d4045)',
+  brass: 'linear-gradient(90deg, #9c7a3c, #e2c487 50%, #a9864a)',
+  gold: 'linear-gradient(90deg, #b8902c, #f3d77a 50%, #c49a35)',
+  white: '#f4f4f2',
+};
 
 const DOOR_LIMITS: Record<DoorType, [number, number]> = { none: [0, 0], hinged: [1, 8], sliding: [2, 4] };
 
@@ -86,15 +97,20 @@ export function DoorsPanel({ c, focus }: { c: Configurator; focus: ActiveFocus |
         </Field>
         {config.handleType !== 'none' && (
           <Field label="Ngjyra e dorezës">
-            <Segmented<HandleFinish>
-              value={config.handleFinish}
-              options={[
-                { value: 'chrome', label: 'Krom' },
-                { value: 'black', label: 'E zezë' },
-                { value: 'brass', label: 'Bronz' },
-              ]}
-              onChange={(handleFinish) => patch({ handleFinish })}
-            />
+            <div className="grid grid-cols-4 gap-1.5">
+              {(Object.keys(HANDLE_FINISH_LABELS) as HandleFinish[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => patch({ handleFinish: f })}
+                  className={`flex flex-col items-center gap-1 rounded-lg border p-1.5 text-[10px] transition ${
+                    f === config.handleFinish ? 'border-accent-500 bg-accent-50 text-accent-700' : 'border-stone-200 text-stone-600 hover:border-stone-300'
+                  }`}
+                >
+                  <span className="h-4 w-full rounded-full" style={{ background: HANDLE_SWATCHES[f], boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.12)' }} />
+                  {HANDLE_FINISH_LABELS[f]}
+                </button>
+              ))}
+            </div>
           </Field>
         )}
         {config.doorType === 'hinged' && (
@@ -127,12 +143,12 @@ export function DoorsPanel({ c, focus }: { c: Configurator; focus: ActiveFocus |
 /** Per-column door editor: none / single / pair, hinge side, optional upper/lower split. */
 function SectionDoors({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
   const { config, patch, layout, unit } = c;
-  const { columnWidth, height: Hi } = layout.interior;
+  const { columnWidths, height: Hi } = layout.interior;
   const n = config.columns.length;
 
   const setDoors = (ci: number, p: Partial<ColumnDoors>) =>
     patch({
-      columns: config.columns.map((col, i) => (i === ci ? { ...col, doors: { ...columnDoors(col, i, n, columnWidth), ...p } } : col)),
+      columns: config.columns.map((col, i) => (i === ci ? { ...col, doors: { ...columnDoors(col, i, n, columnWidths[i]), ...p } } : col)),
     });
 
   /** Default split: line up with the shelf nearest 3/4 of the height, so the seam sits on a shelf. */
@@ -149,13 +165,13 @@ function SectionDoors({ c, focus }: { c: Configurator; focus: ActiveFocus | null
   return (
     <Section title="Dyert për seksion">
       {config.columns.map((col, ci) => {
-        const d = columnDoors(col, ci, n, columnWidth);
+        const d = columnDoors(col, ci, n, columnWidths[ci]);
         return (
           <Flag key={col.id} on={focus?.tab === 'doors' && focus.column === ci} nonce={focus?.nonce} tone={focus?.tone}>
           <div className="rounded-lg border border-stone-200 bg-white p-2.5">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-stone-700">Seksioni {ci + 1}</span>
-              <span className="text-[11px] text-stone-400">{fmtLen(columnWidth, unit)} gjerësi</span>
+              <span className="text-[11px] text-stone-400">{fmtLen(columnWidths[ci], unit)} brenda</span>
             </div>
             <Segmented<'0' | '1' | '2'>
               value={String(d.count) as '0' | '1' | '2'}

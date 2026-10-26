@@ -14,6 +14,7 @@ interface Saved {
   unit: Unit;
   /** Set once units became cm-by-default; older saves stored 'mm' only because it was the default. */
   unitV?: number;
+  pricingV?: number;
 }
 
 function load(): Saved | null {
@@ -24,7 +25,8 @@ function load(): Saved | null {
     // Merge over defaults so older saves pick up newly added fields.
     return {
       config: { ...defaultConfig(), ...saved.config },
-      pricing: { ...defaultPricing(), ...saved.pricing },
+      // Prices saved before the Kosovo defaults (v2) are replaced by them.
+      pricing: saved.pricingV === 2 ? { ...defaultPricing(), ...saved.pricing } : defaultPricing(),
       unit: saved.unitV === 2 && saved.unit === 'mm' ? 'mm' : 'cm',
     };
   } catch {
@@ -40,7 +42,7 @@ export function useConfigurator() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ config, pricing, unit, unitV: 2 }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ config, pricing, unit, unitV: 2, pricingV: 2 }));
     } catch {
       /* storage unavailable — the configurator still works, it just won't remember */
     }
@@ -64,7 +66,7 @@ export function useConfigurator() {
     mapColumn(ci, (col) => ({ ...col, items: col.items.map((it) => (it.id === id ? { ...it, ...p } : it)) }));
   const removeItem = (ci: number, id: string) => mapColumn(ci, (col) => ({ ...col, items: col.items.filter((it) => it.id !== id) }));
   const setColumnDoors = (ci: number, p: Partial<ColumnDoors>) =>
-    mapColumn(ci, (col, cfg) => ({ ...col, doors: { ...columnDoors(col, ci, cfg.columns.length, layout.interior.columnWidth), ...p } }));
+    mapColumn(ci, (col, cfg) => ({ ...col, doors: { ...columnDoors(col, ci, cfg.columns.length, layout.interior.columnWidths[ci]), ...p } }));
 
   const patchPricing = (p: Partial<PricingConfig>) => setPricing((c) => ({ ...c, ...p }));
   const reset = () => {

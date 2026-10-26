@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable, { type RowInput } from 'jspdf-autotable';
 import type { Bom } from '../domain/bom';
-import { HANDLE_FINISH_LABELS, HANDLE_LABELS, HINGE_LABELS, materialById, SLIDE_LABELS, UNIT_LABELS } from '../domain/catalog';
+import { FRONT_STYLE_LABELS, HANDLE_FINISH_LABELS, HANDLE_LABELS, HINGE_LABELS, materialById, SLIDE_LABELS, UNIT_LABELS } from '../domain/catalog';
 import type { Layout as CabinetLayout } from '../domain/types';
 import { formatMoney, type Quote } from '../domain/pricing';
 import type { CabinetConfig, PricingConfig, Unit } from '../domain/types';
@@ -72,10 +72,11 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
     ['Trashësia pllakë / shpinë', `${config.thickness} mm / ${config.backThickness} mm`],
     ['Bazamenti', config.plinthHeight ? L(config.plinthHeight) : 'Pa bazament'],
     ['Ndërtimi', config.construction === 'modules' ? 'Module të veçanta' : 'Një korpus me ndarëse'],
-    ['Seksionet', `${config.columns.length} × ${L(layout.interior.columnWidth)} brenda`],
+    ['Seksionet (gjerësia e brendshme)', layout.interior.columnWidths.map((w) => L(w)).join(' + ')],
     ['Dyert', doorText],
     ['Materiali i fronteve', `${materialById(config.frontFinish.materialId).name} (${config.frontFinish.color})`],
     ['Materiali i korpusit', `${materialById(config.carcassFinish.materialId).name} (${config.carcassFinish.color})`],
+    ['Dizajni i dyerve', FRONT_STYLE_LABELS[config.frontStyle]],
     ['Dorezat', config.handleType === 'none' ? HANDLE_LABELS.none : `${HANDLE_LABELS[config.handleType]}, ${HANDLE_FINISH_LABELS[config.handleFinish].toLowerCase()}`],
     ...(config.doorType === 'hinged' ? [['Pagllamat', `${HINGE_LABELS[config.hingeType]} × ${layout.doors.hingeTotal} gjithsej`]] : []),
     ['Shinat e sirtarëve', SLIDE_LABELS[config.slideType]],
