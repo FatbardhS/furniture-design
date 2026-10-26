@@ -101,8 +101,8 @@ describe('layout + BOM', () => {
       columns: [{ id: 'c', items: [{ id: 'a', type: 'shelf', y: 500 }, { id: 'b', type: 'shelf', y: 510 }, { id: 'x', type: 'shelf', y: 5000 }] }],
     });
     const msgs = buildLayout(cfg).warnings.map((w) => w.message).join('\n');
-    expect(msgs).toMatch(/overlap/);
-    expect(msgs).toMatch(/outside the interior/);
+    expect(msgs).toMatch(/mbivendosen/);
+    expect(msgs).toMatch(/jashtë hapësirës/);
   });
 
   it('hinge rule scales with height and weight', () => {

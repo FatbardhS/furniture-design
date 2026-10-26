@@ -35,7 +35,7 @@ export default function App() {
   };
 
   const resetAll = () => {
-    if (confirm('Reset the cabinet and all prices to defaults?')) c.reset();
+    if (confirm('Të rikthehen dollapi dhe të gjitha çmimet në vlerat fillestare?')) c.reset();
   };
 
   return (
@@ -47,24 +47,24 @@ export default function App() {
           </div>
           <div className="leading-tight">
             <div className="text-sm font-semibold">Closet Studio</div>
-            <div className="hidden text-[11px] text-stone-500 sm:block">3D cabinet configurator & cost estimator</div>
+            <div className="hidden text-[11px] text-stone-500 sm:block">Konfigurues 3D i dollapëve & llogaritës i kostos</div>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="hidden text-right sm:block">
-            <div className="text-[10px] uppercase tracking-wider text-stone-500">Total</div>
+            <div className="text-[10px] uppercase tracking-wider text-stone-500">Totali</div>
             <div className="text-sm font-semibold tabular-nums">{formatMoney(c.quote.grandTotal, c.pricing.currency)}</div>
           </div>
           <div className="w-24">
             <Segmented value={c.unit} options={[{ value: 'mm', label: 'mm' }, { value: 'cm', label: 'cm' }]} onChange={c.setUnit} />
           </div>
-          <Button variant="ghost" onClick={resetAll} title="Reset to defaults">
+          <Button variant="ghost" onClick={resetAll} title="Rikthe vlerat fillestare">
             <Icon name="reset" />
-            <span className="hidden md:inline">Reset</span>
+            <span className="hidden md:inline">Rivendos</span>
           </Button>
           <Button variant="primary" onClick={exportPdf} disabled={exporting}>
             <Icon name="download" />
-            {exporting ? 'Exporting…' : 'PDF quote'}
+            {exporting ? 'Duke eksportuar…' : 'Oferta PDF'}
           </Button>
         </div>
       </header>
@@ -75,10 +75,10 @@ export default function App() {
             value={left}
             onChange={setLeft}
             tabs={[
-              { value: 'size', label: 'Size' },
-              { value: 'interior', label: 'Interior' },
-              { value: 'doors', label: 'Doors & hardware' },
-              { value: 'finish', label: 'Finish' },
+              { value: 'size', label: 'Përmasat' },
+              { value: 'interior', label: 'Brendësia' },
+              { value: 'doors', label: 'Dyert' },
+              { value: 'finish', label: 'Materiali' },
             ]}
           />
           <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -98,10 +98,10 @@ export default function App() {
             value={right}
             onChange={setRight}
             tabs={[
-              { value: 'quote', label: 'Quote' },
-              { value: 'bom', label: 'BOM' },
-              { value: 'cuts', label: 'Cut list', badge: <span className="rounded bg-stone-100 px-1 text-[10px] text-stone-500">{c.bom.cutList.length}</span> },
-              { value: 'prices', label: 'Prices' },
+              { value: 'quote', label: 'Oferta' },
+              { value: 'bom', label: 'Materialet' },
+              { value: 'cuts', label: 'Prerjet', badge: <span className="rounded bg-stone-100 px-1 text-[10px] text-stone-500">{c.bom.cutList.length}</span> },
+              { value: 'prices', label: 'Çmimet' },
             ]}
           />
           <div className="flex-1 overflow-y-auto scrollbar-thin">

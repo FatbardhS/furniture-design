@@ -8,9 +8,9 @@ import { Icon, type IconName } from './icons';
 import { Button, Field, LengthInput, Section, Slider } from './ui';
 
 const ITEM_META: Record<ItemType, { label: string; icon: IconName }> = {
-  shelf: { label: 'Shelf', icon: 'shelf' },
-  rod: { label: 'Hanging rod', icon: 'rod' },
-  drawer: { label: 'Drawer', icon: 'drawer' },
+  shelf: { label: 'Raft', icon: 'shelf' },
+  rod: { label: 'Shufër varëse', icon: 'rod' },
+  drawer: { label: 'Sirtar', icon: 'drawer' },
 };
 
 export function InteriorPanel({ c }: { c: Configurator }) {
@@ -28,7 +28,7 @@ export function InteriorPanel({ c }: { c: Configurator }) {
   const addShelf = (index: number) => {
     const col = config.columns[index];
     const shelf = placeNewItem(col, 'shelf', Hi, T);
-    setNotice(shelf ? '' : `No free space for another shelf in column ${index + 1}.`);
+    setNotice(shelf ? '' : `Nuk ka hapësirë për raft tjetër në seksionin ${index + 1}.`);
     if (shelf) setColumnAt(index, { ...col, items: [...col.items, shelf] });
   };
   /** Removes the most recently added shelf, so + then − is a clean undo. */
@@ -43,7 +43,7 @@ export function InteriorPanel({ c }: { c: Configurator }) {
   const add = (type: ItemType) => {
     const item = placeNewItem(column, type, Hi, T);
     if (!item) {
-      setNotice(`No free space for a ${ITEM_META[type].label.toLowerCase()} in this column.`);
+      setNotice(`Nuk ka hapësirë të lirë për ${ITEM_META[type].label.toLowerCase()} në këtë seksion.`);
       return;
     }
     setNotice('');
@@ -59,7 +59,7 @@ export function InteriorPanel({ c }: { c: Configurator }) {
 
   return (
     <>
-      <Section title="Shelves per column">
+      <Section title="Raftet për seksion">
         {config.columns.map((col, i) => {
           const count = col.items.filter((it) => it.type === 'shelf').length;
           return (
@@ -68,13 +68,13 @@ export function InteriorPanel({ c }: { c: Configurator }) {
                 onClick={() => setActive(i)}
                 className={`flex-1 text-left text-xs ${i === ci ? 'font-semibold text-accent-700' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                Column {i + 1}
+                Seksioni {i + 1}
               </button>
-              <Button onClick={() => removeShelf(i)} disabled={count === 0} title="Remove a shelf">
+              <Button onClick={() => removeShelf(i)} disabled={count === 0} title="Hiq një raft">
                 <Icon name="minus" className="h-3.5 w-3.5" />
               </Button>
               <span className="w-6 text-center text-sm font-semibold tabular-nums">{count}</span>
-              <Button onClick={() => addShelf(i)} title="Add a shelf">
+              <Button onClick={() => addShelf(i)} title="Shto një raft">
                 <Icon name="plus" className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -83,7 +83,7 @@ export function InteriorPanel({ c }: { c: Configurator }) {
         {notice && <p className="text-xs text-amber-700">{notice}</p>}
       </Section>
 
-      <Section title="Column">
+      <Section title="Seksioni">
         <div className="flex flex-wrap gap-1.5">
           {config.columns.map((col, i) => (
             <button
@@ -108,11 +108,11 @@ export function InteriorPanel({ c }: { c: Configurator }) {
               </Button>
             ))}
             <Button variant="ghost" className="justify-start" onClick={() => setColumn(distributeShelves(column, Hi, T))}>
-              <Icon name="spread" className="h-3.5 w-3.5" /> Space shelves evenly
+              <Icon name="spread" className="h-3.5 w-3.5" /> Shpërndaj raftet njëtrajtësisht
             </Button>
             {config.columns.length > 1 && (
               <Button variant="ghost" className="justify-start" onClick={copyToAll}>
-                <Icon name="copy" className="h-3.5 w-3.5" /> Copy to all columns
+                <Icon name="copy" className="h-3.5 w-3.5" /> Kopjo në të gjitha seksionet
               </Button>
             )}
           </div>
@@ -120,16 +120,16 @@ export function InteriorPanel({ c }: { c: Configurator }) {
       </Section>
 
       <Section
-        title={`Items · column ${ci + 1}`}
+        title={`Elementet · seksioni ${ci + 1}`}
         action={
           column.items.length > 0 && (
             <Button variant="danger" onClick={() => setColumn({ ...column, items: [] })}>
-              Clear
+              Pastro
             </Button>
           )
         }
       >
-        {column.items.length === 0 && <p className="text-xs text-stone-500">Empty column. Add shelves, rods or drawers above.</p>}
+        {column.items.length === 0 && <p className="text-xs text-stone-500">Seksion bosh. Shtoni rafte, shufra ose sirtarë më lart.</p>}
         {sortItems(column.items)
           .reverse()
           .map((it) => (
@@ -137,18 +137,18 @@ export function InteriorPanel({ c }: { c: Configurator }) {
               <div className="mb-2 flex items-center gap-2">
                 <Icon name={ITEM_META[it.type].icon} className="h-4 w-4 text-stone-500" />
                 <span className="text-xs font-semibold text-stone-700">{ITEM_META[it.type].label}</span>
-                <span className="ml-auto text-[11px] tabular-nums text-stone-400">{fmtLen(it.y, unit)} from floor</span>
-                <Button variant="danger" className="px-1.5" onClick={() => setColumn({ ...column, items: column.items.filter((x) => x.id !== it.id) })} title="Remove">
+                <span className="ml-auto text-[11px] tabular-nums text-stone-400">{fmtLen(it.y, unit)} nga fundi</span>
+                <Button variant="danger" className="px-1.5" onClick={() => setColumn({ ...column, items: column.items.filter((x) => x.id !== it.id) })} title="Hiq">
                   <Icon name="trash" className="h-3.5 w-3.5" />
                 </Button>
               </div>
               <Slider value={it.y} min={0} max={Math.max(0, Math.round(Hi))} step={5} onChange={(y) => updateItem(it.id, { y })} />
               <div className={`mt-1.5 grid gap-2 ${it.type === 'drawer' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                <Field label={it.type === 'rod' ? 'Rod height' : 'Bottom at'}>
+                <Field label={it.type === 'rod' ? 'Lartësia e shufrës' : 'Fillon në'}>
                   <LengthInput mm={it.y} unit={unit} min={0} max={Hi} onChange={(y) => updateItem(it.id, { y })} />
                 </Field>
                 {it.type === 'drawer' && (
-                  <Field label="Front height">
+                  <Field label="Lartësia e ballit">
                     <LengthInput mm={it.height ?? DEFAULT_DRAWER_HEIGHT} unit={unit} min={80} max={600} onChange={(height) => updateItem(it.id, { height })} />
                   </Field>
                 )}
@@ -167,7 +167,7 @@ function ColumnElevation({ column, interiorHeight, thickness }: { column: Column
   const s = h / Math.max(interiorHeight, 1);
   const y = (mm: number) => h - mm * s;
   return (
-    <svg width={w + 8} height={h + 8} viewBox={`-4 -4 ${w + 8} ${h + 8}`} className="shrink-0" aria-label="Column elevation">
+    <svg width={w + 8} height={h + 8} viewBox={`-4 -4 ${w + 8} ${h + 8}`} className="shrink-0" aria-label="Pamja e seksionit">
       <rect x={0} y={0} width={w} height={h} fill="#fafaf9" stroke="#a8a29e" strokeWidth={1.5} />
       {column.items.map((it) => {
         if (it.type === 'shelf') return <rect key={it.id} x={0} y={y(it.y + thickness)} width={w} height={Math.max(2, thickness * s)} fill="#78716c" />;

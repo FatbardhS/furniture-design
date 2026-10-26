@@ -1,3 +1,4 @@
+import { UNIT_LABELS } from '../domain/catalog';
 import { toUnit } from '../domain/units';
 import type { Configurator } from '../state/useConfigurator';
 import { Section } from './ui';
@@ -9,14 +10,14 @@ export function BomPanel({ c }: { c: Configurator }) {
   const { bom } = c;
   return (
     <>
-      <Section title="Board material">
+      <Section title="Pllakat">
         <table className="w-full text-xs">
           <thead className="border-b border-stone-200">
             <tr>
-              <th className={th}>Material</th>
-              <th className={`${th} text-right`}>Net m²</th>
-              <th className={`${th} text-right`}>+Waste</th>
-              <th className={`${th} text-right`}>Sheets</th>
+              <th className={th}>Materiali</th>
+              <th className={`${th} text-right`}>Neto m²</th>
+              <th className={`${th} text-right`}>+Humbje</th>
+              <th className={`${th} text-right`}>Pllaka</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
@@ -24,7 +25,7 @@ export function BomPanel({ c }: { c: Configurator }) {
               <tr key={b.material}>
                 <td className={td}>
                   {b.label}
-                  <div className="text-[11px] text-stone-400">{b.parts} parts</div>
+                  <div className="text-[11px] text-stone-400">{b.parts} pjesë</div>
                 </td>
                 <td className={`${td} text-right`}>{b.netArea.toFixed(3)}</td>
                 <td className={`${td} text-right`}>{b.grossArea.toFixed(3)}</td>
@@ -32,7 +33,7 @@ export function BomPanel({ c }: { c: Configurator }) {
               </tr>
             ))}
             <tr>
-              <td className={td}>Edge banding (kant)</td>
+              <td className={td}>Kanti (shirit)</td>
               <td className={`${td} text-right`} colSpan={3}>
                 {bom.edgeBandingM.toFixed(2)} m
               </td>
@@ -41,15 +42,15 @@ export function BomPanel({ c }: { c: Configurator }) {
         </table>
       </Section>
 
-      <Section title="Hardware">
+      <Section title="Okovët">
         {bom.hardware.length === 0 ? (
-          <p className="text-xs text-stone-500">No hardware needed for this configuration.</p>
+          <p className="text-xs text-stone-500">Nuk nevojiten okovë për këtë konfigurim.</p>
         ) : (
           <table className="w-full text-xs">
             <thead className="border-b border-stone-200">
               <tr>
-                <th className={th}>Item</th>
-                <th className={`${th} text-right`}>Qty</th>
+                <th className={th}>Artikulli</th>
+                <th className={`${th} text-right`}>Sasia</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
@@ -57,7 +58,7 @@ export function BomPanel({ c }: { c: Configurator }) {
                 <tr key={h.id}>
                   <td className={td}>{h.name}</td>
                   <td className={`${td} whitespace-nowrap text-right`}>
-                    {h.qty} {h.unit}
+                    {h.qty} {UNIT_LABELS[h.unit]}
                   </td>
                 </tr>
               ))}
@@ -73,20 +74,20 @@ export function CutListPanel({ c }: { c: Configurator }) {
   const { bom, unit } = c;
   const len = (mm: number) => +toUnit(mm, unit).toFixed(1);
   return (
-    <Section title={`Cut list · ${unit}`}>
+    <Section title={`Lista e prerjeve · ${unit}`}>
       <p className="text-[11px] text-stone-500">
-        Length runs along the grain. Edge columns: banded long / short edges (e.g. 1/0 = one long edge).
+        Gjatësia shkon sipas drejtimit të fladrës. Kanti: anët e gjata / të shkurtra me kant (p.sh. 1/0 = një anë e gjatë).
       </p>
       <div className="-mx-1 overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="border-b border-stone-200">
             <tr>
-              <th className={th}>Part</th>
-              <th className={`${th} text-right`}>L</th>
-              <th className={`${th} text-right`}>W</th>
-              <th className={`${th} text-right`}>T</th>
-              <th className={`${th} text-right`}>Qty</th>
-              <th className={`${th} text-right`}>Edge</th>
+              <th className={th}>Pjesa</th>
+              <th className={`${th} text-right`}>Gjat.</th>
+              <th className={`${th} text-right`}>Gjer.</th>
+              <th className={`${th} text-right`}>Trash.</th>
+              <th className={`${th} text-right`}>Sasia</th>
+              <th className={`${th} text-right`}>Kanti</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">

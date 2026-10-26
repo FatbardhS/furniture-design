@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable, { type RowInput } from 'jspdf-autotable';
 import type { Bom } from '../domain/bom';
-import { HANDLE_LABELS, HINGE_LABELS, materialById, SLIDE_LABELS } from '../domain/catalog';
+import { HANDLE_FINISH_LABELS, HANDLE_LABELS, HINGE_LABELS, materialById, SLIDE_LABELS, UNIT_LABELS } from '../domain/catalog';
 import type { Layout as CabinetLayout } from '../domain/types';
 import { formatMoney, type Quote } from '../domain/pricing';
 import type { CabinetConfig, PricingConfig, Unit } from '../domain/types';
@@ -19,6 +19,9 @@ interface ReportInput {
 }
 
 const INK: [number, number, number] = [28, 25, 23];
+const ITEM_SHORT = { shelf: 'raft', rod: 'shufër', drawer: 'sirtar' } as const;
+const LEVEL_LABELS = { error: 'GABIM', warn: 'KUJDES', info: 'INFO' } as const;
+const DOOR_TYPE_LABELS = { none: 'pa dyer', hinged: 'me pagllama', sliding: 'rrëshqitëse' } as const;
 const MUTED: [number, number, number] = [120, 113, 108];
 const ACCENT: [number, number, number] = [176, 122, 72];
 const M = 14; // page margin, mm
@@ -36,13 +39,13 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
   doc.rect(0, 0, pageW, 24, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold').setFontSize(16);
-  doc.text('Cabinet Quote & Bill of Materials', M, 11);
+  doc.text('Oferta & lista e materialeve', M, 11);
   doc.setFont('helvetica', 'normal').setFontSize(9);
-  doc.text(`${quoteNo}  ·  ${now.toLocaleDateString('en-GB')}`, M, 18);
+  doc.text(`${quoteNo}  ·  ${now.toLocaleDateString('de-DE')}`, M, 18);
   doc.setFont('helvetica', 'bold').setFontSize(15);
   doc.text(money(quote.grandTotal), pageW - M, 12, { align: 'right' });
   doc.setFont('helvetica', 'normal').setFontSize(8);
-  doc.text(pricing.vatPercent > 0 ? `incl. ${pricing.vatPercent}% VAT` : 'excl. VAT', pageW - M, 18, { align: 'right' });
+  doc.text(pricing.vatPercent > 0 ? `me ${pricing.vatPercent}% TVSH` : 'pa TVSH', pageW - M, 18, { align: 'right' });
 
   // --- Snapshot + configuration summary ---
   let y = 32;
@@ -59,23 +62,23 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
 
   const doorText =
     config.doorType === 'none'
-      ? 'Open (no doors)'
+      ? 'E hapur (pa dyer)'
       : config.doorType === 'hinged' && config.doorLayout === 'perColumn'
-        ? `${layout.doors.count} × hinged, per section (largest ${L(layout.doors.width)} × ${L(layout.doors.height)})`
-        : `${layout.doors.count} × ${config.doorType} (${L(layout.doors.width)} × ${L(layout.doors.height)})`;
+        ? `${layout.doors.count} dyer me pagllama, për seksion (më e madhja ${L(layout.doors.width)} × ${L(layout.doors.height)})`
+        : `${layout.doors.count} × ${DOOR_TYPE_LABELS[config.doorType]} (${L(layout.doors.width)} × ${L(layout.doors.height)})`;
   const specRows: RowInput[] = [
-    ['Overall size (W × H × D)', `${L(config.width)} × ${L(config.height)} × ${L(config.depth)}`],
-    ['Interior (W × H × D)', `${L(layout.interior.width)} × ${L(layout.interior.height)} × ${L(layout.interior.depth)}`],
-    ['Board / back thickness', `${config.thickness} mm / ${config.backThickness} mm`],
-    ['Plinth', config.plinthHeight ? L(config.plinthHeight) : 'None'],
-    ['Construction', config.construction === 'modules' ? 'Separate modules' : 'One carcass with dividers'],
-    ['Sections', `${config.columns.length} × ${L(layout.interior.columnWidth)} inside`],
-    ['Doors', doorText],
-    ['Front finish', `${materialById(config.frontFinish.materialId).name} (${config.frontFinish.color})`],
-    ['Carcass finish', `${materialById(config.carcassFinish.materialId).name} (${config.carcassFinish.color})`],
-    ['Handles', config.handleType === 'none' ? HANDLE_LABELS.none : `${HANDLE_LABELS[config.handleType]}, ${config.handleFinish}`],
-    ...(config.doorType === 'hinged' ? [['Hinges', `${HINGE_LABELS[config.hingeType]} × ${layout.doors.hingeTotal} total`]] : []),
-    ['Drawer slides', SLIDE_LABELS[config.slideType]],
+    ['Përmasat (Gj × L × Th)', `${L(config.width)} × ${L(config.height)} × ${L(config.depth)}`],
+    ['Brendësia (Gj × L × Th)', `${L(layout.interior.width)} × ${L(layout.interior.height)} × ${L(layout.interior.depth)}`],
+    ['Trashësia pllakë / shpinë', `${config.thickness} mm / ${config.backThickness} mm`],
+    ['Bazamenti', config.plinthHeight ? L(config.plinthHeight) : 'Pa bazament'],
+    ['Ndërtimi', config.construction === 'modules' ? 'Module të veçanta' : 'Një korpus me ndarëse'],
+    ['Seksionet', `${config.columns.length} × ${L(layout.interior.columnWidth)} brenda`],
+    ['Dyert', doorText],
+    ['Materiali i fronteve', `${materialById(config.frontFinish.materialId).name} (${config.frontFinish.color})`],
+    ['Materiali i korpusit', `${materialById(config.carcassFinish.materialId).name} (${config.carcassFinish.color})`],
+    ['Dorezat', config.handleType === 'none' ? HANDLE_LABELS.none : `${HANDLE_LABELS[config.handleType]}, ${HANDLE_FINISH_LABELS[config.handleFinish].toLowerCase()}`],
+    ...(config.doorType === 'hinged' ? [['Pagllamat', `${HINGE_LABELS[config.hingeType]} × ${layout.doors.hingeTotal} gjithsej`]] : []),
+    ['Shinat e sirtarëve', SLIDE_LABELS[config.slideType]],
   ];
   autoTable(doc, {
     startY: y,
@@ -88,16 +91,16 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
   y = Math.max(y + imgH, lastY(doc)) + 8;
 
   // --- Interior per column ---
-  heading(doc, 'Interior layout', y);
+  heading(doc, 'Brendësia e seksioneve', y);
   autoTable(doc, {
     startY: y + 2,
     margin: { left: M, right: M },
-    head: [['Column', 'Shelves', 'Hanging rods', 'Drawers', 'Positions from interior floor']],
+    head: [['Seksioni', 'Rafte', 'Shufra', 'Sirtarë', 'Pozicionet nga fundi i brendshëm']],
     body: config.columns.map((col, i) => {
       const count = (t: string) => col.items.filter((it) => it.type === t).length;
       const positions = [...col.items]
         .sort((a, b) => a.y - b.y)
-        .map((it) => `${it.type}@${+toUnit(it.y, unit).toFixed(1)}${it.type === 'drawer' ? `(h${+toUnit(it.height ?? 0, unit).toFixed(1)})` : ''}`)
+        .map((it) => `${ITEM_SHORT[it.type]}@${+toUnit(it.y, unit).toFixed(1)}${it.type === 'drawer' ? `(l${+toUnit(it.height ?? 0, unit).toFixed(1)})` : ''}`)
         .join(', ');
       return [`${i + 1}`, count('shelf'), count('rod'), count('drawer'), positions || '—'];
     }),
@@ -107,25 +110,25 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
   y = lastY(doc) + 8;
 
   // --- Cost summary ---
-  heading(doc, 'Price quote', y);
+  heading(doc, 'Oferta e çmimit', y);
   const costRows: RowInput[] = [
     ...quote.materialLines.map((l) => [l.label, l.detail, money(l.amount)]),
-    ...bom.hardware.map((h) => [h.name, `${h.qty} ${h.unit} × ${h.unitPrice.toFixed(2)}`, money(h.total)]),
-    ['Workmanship', quote.laborDetail, money(quote.laborSubtotal)],
-    ...(quote.installation > 0 ? [['Installation & delivery', 'Fixed fee', money(quote.installation)]] : []),
+    ...bom.hardware.map((h) => [h.name, `${h.qty} ${UNIT_LABELS[h.unit]} × ${h.unitPrice.toFixed(2)}`, money(h.total)]),
+    ['Puna e punëtorisë', quote.laborDetail, money(quote.laborSubtotal)],
+    ...(quote.installation > 0 ? [['Montimi & transporti', 'Çmim fiks', money(quote.installation)]] : []),
   ];
   const totals: RowInput[] = [
-    ['Material subtotal', '', money(quote.materialSubtotal)],
-    ['Hardware subtotal', '', money(quote.hardwareSubtotal)],
-    ['Labor & services', '', money(quote.laborSubtotal + quote.installation)],
-    ['Net total', '', money(quote.net)],
-    ...(pricing.vatPercent > 0 ? [[`VAT ${pricing.vatPercent}%`, '', money(quote.vat)]] : []),
-    ['GRAND TOTAL', '', money(quote.grandTotal)],
+    ['Nëntotali i materialit', '', money(quote.materialSubtotal)],
+    ['Nëntotali i okovëve', '', money(quote.hardwareSubtotal)],
+    ['Puna & shërbimet', '', money(quote.laborSubtotal + quote.installation)],
+    ['Totali neto', '', money(quote.net)],
+    ...(pricing.vatPercent > 0 ? [[`TVSH ${pricing.vatPercent}%`, '', money(quote.vat)]] : []),
+    ['TOTALI PËRFUNDIMTAR', '', money(quote.grandTotal)],
   ];
   autoTable(doc, {
     startY: y + 2,
     margin: { left: M, right: M },
-    head: [['Item', 'Calculation', 'Amount']],
+    head: [['Artikulli', 'Llogaritja', 'Shuma']],
     body: costRows,
     foot: totals,
     showFoot: 'lastPage',
@@ -148,38 +151,38 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
     doc.addPage();
     y = M + 4;
   }
-  heading(doc, 'Bill of materials — boards', y);
+  heading(doc, 'Lista e materialeve — pllakat', y);
   autoTable(doc, {
     startY: y + 2,
     margin: { left: M, right: M },
-    head: [['Material', 'Parts', 'Net area m²', `+${pricing.wastePercent}% waste m²`, 'Sheets 2800×2070']],
+    head: [['Materiali', 'Pjesë', 'Neto m²', `+${pricing.wastePercent}% humbje m²`, 'Pllaka 2800×2070']],
     body: [
       ...bom.boards.map((b) => [b.label, b.parts, b.netArea.toFixed(3), b.grossArea.toFixed(3), b.sheets]),
-      ['Edge banding (kant)', '', `${bom.edgeBandingM.toFixed(2)} m`, '', ''],
+      ['Kanti (shirit)', '', `${bom.edgeBandingM.toFixed(2)} m`, '', ''],
     ],
     ...tableStyle(),
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
   });
   y = lastY(doc) + 8;
 
-  heading(doc, 'Bill of materials — hardware', y);
+  heading(doc, 'Lista e materialeve — okovët', y);
   autoTable(doc, {
     startY: y + 2,
     margin: { left: M, right: M },
-    head: [['Item', 'Quantity', 'Unit price', 'Total']],
+    head: [['Artikulli', 'Sasia', 'Çmimi për njësi', 'Totali']],
     body: bom.hardware.length
-      ? bom.hardware.map((h) => [h.name, `${h.qty} ${h.unit}`, money(h.unitPrice), money(h.total)])
-      : [['No hardware required', '', '', '']],
+      ? bom.hardware.map((h) => [h.name, `${h.qty} ${UNIT_LABELS[h.unit]}`, money(h.unitPrice), money(h.total)])
+      : [['Nuk nevojiten okovë', '', '', '']],
     ...tableStyle(),
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
   });
   y = lastY(doc) + 8;
 
-  heading(doc, `Cut list (${unit}) — length along grain`, y);
+  heading(doc, `Lista e prerjeve (${unit}) — gjatësia sipas fladrës`, y);
   autoTable(doc, {
     startY: y + 2,
     margin: { left: M, right: M },
-    head: [['#', 'Part', 'Material', 'Length', 'Width', 'Thk mm', 'Qty', 'Edge L/S', 'm²']],
+    head: [['#', 'Pjesa', 'Materiali', 'Gjatësia', 'Gjerësia', 'Trash. mm', 'Sasia', 'Kanti Gj/Sh', 'm²']],
     body: bom.cutList.map((r, i) => [
       i + 1,
       r.name,
@@ -205,11 +208,11 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
 
   if (layout.warnings.length) {
     y = lastY(doc) + 8;
-    heading(doc, 'Design notes', y);
+    heading(doc, 'Vërejtje teknike', y);
     autoTable(doc, {
       startY: y + 2,
       margin: { left: M, right: M },
-      body: layout.warnings.map((w) => [w.level.toUpperCase(), w.message]),
+      body: layout.warnings.map((w) => [LEVEL_LABELS[w.level], w.message]),
       theme: 'plain',
       styles: { fontSize: 8, textColor: INK },
       columnStyles: { 0: { cellWidth: 16, fontStyle: 'bold', textColor: ACCENT } },
@@ -222,8 +225,8 @@ export function buildQuotePdf({ config, pricing, layout, bom, quote, unit, snaps
     doc.setPage(i);
     doc.setFontSize(7).setTextColor(...MUTED);
     const h = doc.internal.pageSize.getHeight();
-    doc.text(`${quoteNo} · Prices are estimates and valid for 30 days.`, M, h - 8);
-    doc.text(`Page ${i} / ${pages}`, pageW - M, h - 8, { align: 'right' });
+    doc.text(`${quoteNo} · Çmimet janë të përafërta dhe vlejnë 30 ditë.`, M, h - 8);
+    doc.text(`Faqja ${i} / ${pages}`, pageW - M, h - 8, { align: 'right' });
   }
 
   return { doc, fileName: `${quoteNo}.pdf` };

@@ -319,9 +319,9 @@ export class CabinetRenderer {
       this.dims.add(label);
     };
     const t = 0.025;
-    dim(new THREE.Vector3(-W / 2, H + off, D / 2), new THREE.Vector3(W / 2, H + off, D / 2), new THREE.Vector3(0, t, 0), `W ${fmtLen(cfg.width, unit)}`);
-    dim(new THREE.Vector3(-W / 2 - off, 0, D / 2), new THREE.Vector3(-W / 2 - off, H, D / 2), new THREE.Vector3(t, 0, 0), `H ${fmtLen(cfg.height, unit)}`);
-    dim(new THREE.Vector3(W / 2 + off, H, -D / 2), new THREE.Vector3(W / 2 + off, H, D / 2), new THREE.Vector3(0, t, 0), `D ${fmtLen(cfg.depth, unit)}`);
+    dim(new THREE.Vector3(-W / 2, H + off, D / 2), new THREE.Vector3(W / 2, H + off, D / 2), new THREE.Vector3(0, t, 0), `Gjerësia ${fmtLen(cfg.width, unit)}`);
+    dim(new THREE.Vector3(-W / 2 - off, 0, D / 2), new THREE.Vector3(-W / 2 - off, H, D / 2), new THREE.Vector3(t, 0, 0), `Lartësia ${fmtLen(cfg.height, unit)}`);
+    dim(new THREE.Vector3(W / 2 + off, H, -D / 2), new THREE.Vector3(W / 2 + off, H, D / 2), new THREE.Vector3(0, t, 0), `Thellësia ${fmtLen(cfg.depth, unit)}`);
   }
 
   private seamMaterial() {

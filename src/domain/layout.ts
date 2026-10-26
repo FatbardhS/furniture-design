@@ -23,6 +23,7 @@ const HINGE_HEIGHT_RULES: [number, number][] = [
 const KG_PER_HINGE = 5;
 const SLIDE_SIDE_CLEARANCE = { ballBearing: 12.5, softCloseUndermount: 5 } as const;
 const BAR_LENGTHS = [96, 128, 160, 192, 256, 320];
+const ITEM_NAMES = { shelf: 'Rafti', rod: 'Shufra varëse', drawer: 'Sirtari' } as const;
 
 export function hingesForDoor(heightMm: number, weightKg: number): number {
   const byHeight = HINGE_HEIGHT_RULES.find(([h]) => heightMm <= h)?.[1] ?? 6;
@@ -77,9 +78,9 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   const boundary = (i: number) =>
     i <= 0 ? -W / 2 : i >= n ? W / 2 : modular ? -W / 2 + i * moduleW : colLeft(i) - T / 2;
 
-  if (Dc < 250) warnings.push({ level: 'error', message: `Carcass depth is only ${Math.round(Dc)} mm — increase overall depth.` });
-  if (Hi < 200) warnings.push({ level: 'error', message: 'Interior height is too small for this plinth / height combination.' });
-  if (cw < 250) warnings.push({ level: 'warn', message: `Columns are only ${Math.round(cw)} mm wide — consider fewer columns.` });
+  if (Dc < 250) warnings.push({ level: 'error', message: `Thellësia e korpusit është vetëm ${Math.round(Dc)} mm — rriteni thellësinë.` });
+  if (Hi < 200) warnings.push({ level: 'error', message: 'Lartësia e brendshme është shumë e vogël për këtë bazament / lartësi.' });
+  if (cw < 250) warnings.push({ level: 'warn', message: `Seksionet janë vetëm ${Math.round(cw)} mm të gjera — përdorni më pak seksione.` });
 
   // --- Carcass ---------------------------------------------------------------
   /** One cabinet box spanning [x0, x1]: sides, top, bottom, plinth and back. */
@@ -90,7 +91,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     for (const side of [-1, 1] as const) {
       parts.push({
         id: `${tag}side-${side}`,
-        name: 'Side panel',
+        name: 'Anësore',
         category: 'side',
         material: 'carcass',
         length: H,
@@ -104,8 +105,8 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       });
     }
     for (const [id, name, y] of [
-      ['bottom', 'Bottom panel', P + T / 2],
-      ['top', 'Top panel', H - T / 2],
+      ['bottom', 'Fundi (poshtë)', P + T / 2],
+      ['top', 'Kapaku (lart)', H - T / 2],
     ] as const) {
       parts.push({
         id: `${tag}${id}`,
@@ -125,7 +126,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     if (P > 0) {
       parts.push({
         id: `${tag}plinth`,
-        name: 'Plinth (toe kick)',
+        name: 'Bazamenti (sokla)',
         category: 'plinth',
         material: 'carcass',
         length: inner,
@@ -149,7 +150,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     for (let i = 0; i < backPieces; i++) {
       parts.push({
         id: `${tag}back-${i}`,
-        name: 'Back panel (HDF)',
+        name: 'Shpina (HDF)',
         category: 'back',
         material: 'back',
         length: backH,
@@ -174,7 +175,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   for (let i = 0; i < (modular ? 0 : n - 1); i++) {
     parts.push({
       id: `divider-${i}`,
-      name: 'Divider',
+      name: 'Ndarëse',
       category: 'divider',
       material: 'carcass',
       length: Hi,
@@ -193,27 +194,27 @@ export function buildLayout(cfg: CabinetConfig): Layout {
 
   cfg.columns.forEach((col, ci) => {
     const cx = colLeft(ci) + cw / 2;
-    const label = `column ${ci + 1}`;
+    const label = `seksionin ${ci + 1}`;
     const sorted = sortItems(col.items);
 
     // Validation: bounds and overlaps.
     sorted.forEach((it, idx) => {
       const [lo, hi] = itemInterval(it, T);
-      if (lo < 0 || hi > Hi) warnings.push({ level: 'error', message: `A ${it.type} in ${label} is outside the interior (0–${Math.round(Hi)} mm).` });
+      if (lo < 0 || hi > Hi) warnings.push({ level: 'error', message: `${ITEM_NAMES[it.type]} në ${label} del jashtë hapësirës së brendshme (0–${Math.round(Hi)} mm).` });
       const next = sorted[idx + 1];
       if (next) {
         const [nlo] = itemInterval(next, T);
-        if (nlo < hi - 0.5) warnings.push({ level: 'error', message: `A ${it.type} and a ${next.type} overlap in ${label}.` });
+        if (nlo < hi - 0.5) warnings.push({ level: 'error', message: `${ITEM_NAMES[it.type]} dhe ${ITEM_NAMES[next.type].toLowerCase()} mbivendosen në ${label}.` });
       }
     });
 
     for (const it of sorted) {
       if (it.type === 'shelf') {
         const len = cw - 2;
-        if (len > 900 && T <= 19) warnings.push({ level: 'warn', message: `Shelf span of ${Math.round(len)} mm in ${label} may sag — add a divider or use thicker board.` });
+        if (len > 900 && T <= 19) warnings.push({ level: 'warn', message: `Rafti ${Math.round(len)} mm në ${label} mund të përkulet — shtoni ndarëse ose pllakë më të trashë.` });
         parts.push({
           id: `shelf-${it.id}`,
-          name: 'Shelf',
+          name: 'Raft',
           category: 'shelf',
           material: 'carcass',
           length: len,
@@ -230,7 +231,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       } else {
         const h = it.height ?? DEFAULT_DRAWER_HEIGHT;
         if (!slideLen) {
-          warnings.push({ level: 'error', message: `Not enough depth for drawer slides in ${label}.` });
+          warnings.push({ level: 'error', message: `Nuk ka thellësi të mjaftueshme për shinat e sirtarit në ${label}.` });
           continue;
         }
         const key = `drawer-${it.id}`;
@@ -240,7 +241,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         const frontY = floorY + it.y + h / 2;
         parts.push({
           id: `dfront-${it.id}`,
-          name: 'Drawer front',
+          name: 'Balli i sirtarit',
           category: 'drawerFront',
           material: 'front',
           length: frontW,
@@ -260,12 +261,12 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         const boxH = Math.max(60, h - 50);
         const boxBottom = floorY + it.y + 15;
         const boxZ = drawerFrontZ - T / 2 - boxD / 2;
-        if (boxH < 80) warnings.push({ level: 'warn', message: `Drawer in ${label} is very shallow (${h} mm).` });
+        if (boxH < 80) warnings.push({ level: 'warn', message: `Sirtari në ${label} është shumë i ulët (${h} mm).` });
 
         for (const s of [-1, 1] as const) {
           parts.push({
             id: `dside-${it.id}-${s}`,
-            name: 'Drawer side',
+            name: 'Anësore sirtari',
             category: 'drawerSide',
             material: 'carcass',
             length: boxD,
@@ -282,7 +283,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         for (const e of [-1, 1] as const) {
           parts.push({
             id: `dend-${it.id}-${e}`,
-            name: 'Drawer box front/back',
+            name: 'Para/prapa sirtari',
             category: 'drawerEnd',
             material: 'carcass',
             length: boxW - 2 * T,
@@ -298,7 +299,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         }
         parts.push({
           id: `dbottom-${it.id}`,
-          name: 'Drawer bottom (HDF)',
+          name: 'Fundi i sirtarit (HDF)',
           category: 'drawerBottom',
           material: 'back',
           length: boxW,
@@ -353,7 +354,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       const key = `door-${doorInfo.count - 1}`;
       parts.push({
         id: key,
-        name: 'Door',
+        name: 'Derë',
         category: 'door',
         material: 'front',
         length: dh,
@@ -396,7 +397,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
           rows.push([doorBottom, doorTop, 'mid']);
         } else {
           if (d.split < 100 || d.split > Hi - 100) {
-            warnings.push({ level: 'warn', message: `Door split in column ${ci + 1} is too close to the top or bottom.` });
+            warnings.push({ level: 'warn', message: `Ndarja e dyerve në seksionin ${ci + 1} është shumë afër lartë ose poshtë.` });
           }
           const s = floorY + d.split;
           rows.push([doorBottom, s - DOOR_GAP / 2, 'high'], [s + DOOR_GAP / 2, doorTop, 'low']);
@@ -420,16 +421,16 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       }
     }
 
-    if (doorInfo.width > 650) warnings.push({ level: 'warn', message: `Hinged doors up to ${Math.round(doorInfo.width)} mm wide — more than 600 mm is not recommended; add doors.` });
-    if (doorInfo.height > 2400) warnings.push({ level: 'warn', message: `Doors are ${Math.round(doorInfo.height)} mm tall — tall doors may warp; consider splitting them.` });
+    if (doorInfo.width > 650) warnings.push({ level: 'warn', message: `Dyer deri në ${Math.round(doorInfo.width)} mm të gjera — mbi 600 mm nuk rekomandohet; shtoni dyer.` });
+    if (doorInfo.height > 2400) warnings.push({ level: 'warn', message: `Dyert janë ${Math.round(doorInfo.height)} mm të larta — mund të shtrembërohen; ndajini lart/poshtë.` });
   } else if (cfg.doorType === 'sliding') {
     const nd = Math.min(4, Math.max(2, cfg.doorCount));
     const dh = H - P - 4;
     const dw = (W + (nd - 1) * SLIDING_OVERLAP) / nd;
     const weight = (dw * dh * T * 1e-9) * density;
     doorInfo = { count: nd, width: dw, height: dh, weightKg: weight, hingeTotal: 0 };
-    if (dw < 500) warnings.push({ level: 'warn', message: `Sliding doors are only ${Math.round(dw)} mm wide — use fewer doors.` });
-    if (weight > 40) warnings.push({ level: 'warn', message: `Each sliding door weighs ~${weight.toFixed(0)} kg — check the track's load rating.` });
+    if (dw < 500) warnings.push({ level: 'warn', message: `Dyert rrëshqitëse janë vetëm ${Math.round(dw)} mm të gjera — përdorni më pak dyer.` });
+    if (weight > 40) warnings.push({ level: 'warn', message: `Çdo derë rrëshqitëse peshon ~${weight.toFixed(0)} kg — kontrolloni kapacitetin e shinës.` });
 
     const y = P + 2 + dh / 2;
     for (let i = 0; i < nd; i++) {
@@ -439,7 +440,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       const key = `door-${i}`;
       parts.push({
         id: key,
-        name: 'Sliding door',
+        name: 'Derë rrëshqitëse',
         category: 'door',
         material: 'front',
         length: dh,

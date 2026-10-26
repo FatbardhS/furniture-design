@@ -48,26 +48,26 @@ export function Viewport({
 
       <div className="absolute left-3 right-3 top-3 flex flex-wrap items-center gap-1.5">
         <Toggle
-          label={hasDoors ? (view.doorsOpen ? 'Close doors' : 'Open doors') : 'No doors'}
+          label={hasDoors ? (view.doorsOpen ? 'Mbyll dyert' : 'Hap dyert') : 'Pa dyer'}
           icon={<Icon name="door" />}
           checked={view.doorsOpen}
           onChange={(v) => hasDoors && set({ doorsOpen: v })}
         />
         <Toggle
-          label={view.drawersOpen ? 'Close drawers' : 'Open drawers'}
+          label={view.drawersOpen ? 'Mbyll sirtarët' : 'Hap sirtarët'}
           icon={<Icon name="drawer" />}
           checked={view.drawersOpen}
           onChange={(v) => hasDrawers && set({ drawersOpen: v })}
         />
-        <Toggle label="Hide doors" icon={<Icon name="eye" />} checked={!view.showFronts} onChange={(v) => set({ showFronts: !v })} />
-        <Toggle label="Dimensions" icon={<Icon name="ruler" />} checked={view.showDimensions} onChange={(v) => set({ showDimensions: v })} />
-        <Button variant="secondary" className="ml-auto bg-white/90" onClick={() => rendererRef.current?.resetCamera()} title="Reset camera">
-          <Icon name="reset" /> Reset view
+        <Toggle label="Fshih dyert" icon={<Icon name="eye" />} checked={!view.showFronts} onChange={(v) => set({ showFronts: !v })} />
+        <Toggle label="Përmasat" icon={<Icon name="ruler" />} checked={view.showDimensions} onChange={(v) => set({ showDimensions: v })} />
+        <Button variant="secondary" className="ml-auto bg-white/90" onClick={() => rendererRef.current?.resetCamera()} title="Rikthe kamerën">
+          <Icon name="reset" /> Rikthe pamjen
         </Button>
       </div>
 
       <div className="pointer-events-none absolute bottom-3 right-3 hidden text-[11px] text-stone-500 sm:block">
-        Drag to rotate · Right-drag to pan · Scroll to zoom
+        Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
       </div>
 
       {problems.length > 0 && (
@@ -79,7 +79,7 @@ export function Viewport({
             } ${showWarnings ? '' : 'rounded-b-lg'}`}
           >
             <Icon name="alert" className="h-3.5 w-3.5" />
-            {problems.length} {problems.length === 1 ? 'issue' : 'issues'} to review
+            {problems.length} vërejtje për kontroll
           </button>
           {showWarnings && (
             <ul className="max-h-40 space-y-1 overflow-auto rounded-b-lg rounded-tr-lg border border-stone-200 bg-white/95 p-2.5 text-xs shadow-sm scrollbar-thin">

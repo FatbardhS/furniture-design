@@ -22,9 +22,9 @@ export function PricesPanel({ c }: { c: Configurator }) {
 
   return (
     <>
-      <Section title="General">
+      <Section title="Të përgjithshme">
         <div className="grid grid-cols-3 gap-2">
-          <Field label="Currency">
+          <Field label="Valuta">
             <input
               className="w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm"
               value={p.currency}
@@ -32,23 +32,23 @@ export function PricesPanel({ c }: { c: Configurator }) {
               onChange={(e) => patchPricing({ currency: e.target.value })}
             />
           </Field>
-          <Field label="Waste">
+          <Field label="Humbja">
             <NumberInput value={p.wastePercent} min={0} max={60} suffix="%" onChange={(wastePercent) => patchPricing({ wastePercent })} />
           </Field>
-          <Field label="VAT">
+          <Field label="TVSH">
             <NumberInput value={p.vatPercent} min={0} max={40} suffix="%" onChange={(vatPercent) => patchPricing({ vatPercent })} />
           </Field>
         </div>
       </Section>
 
-      <Section title={`Boards · ${cur}/m²`}>
+      <Section title={`Pllakat · ${cur}/m²`}>
         {MATERIALS.map((m) => (
           <PriceRow
             key={m.id}
             label={
               <>
                 {m.name}
-                {inUse.has(m.id) && <span className="ml-1.5 rounded bg-accent-100 px-1 py-px text-[10px] font-semibold text-accent-700">in use</span>}
+                {inUse.has(m.id) && <span className="ml-1.5 rounded bg-accent-100 px-1 py-px text-[10px] font-semibold text-accent-700">në përdorim</span>}
               </>
             }
             highlight={inUse.has(m.id)}
@@ -57,42 +57,42 @@ export function PricesPanel({ c }: { c: Configurator }) {
             onChange={(v) => patchPricing({ boardPrices: { ...p.boardPrices, [m.id]: v } })}
           />
         ))}
-        <PriceRow label="Back panel HDF/MDF" value={p.backPanelPerM2} unit={cur} onChange={(backPanelPerM2) => patchPricing({ backPanelPerM2 })} />
-        <PriceRow label="Edge banding (per m)" value={p.edgeBandingPerM} unit={cur} onChange={(edgeBandingPerM) => patchPricing({ edgeBandingPerM })} />
+        <PriceRow label="Shpina HDF/MDF" value={p.backPanelPerM2} unit={cur} onChange={(backPanelPerM2) => patchPricing({ backPanelPerM2 })} />
+        <PriceRow label="Kanti (për m)" value={p.edgeBandingPerM} unit={cur} onChange={(edgeBandingPerM) => patchPricing({ edgeBandingPerM })} />
       </Section>
 
-      <Section title={`Hardware · ${cur} per unit`}>
-        <PriceRow label="Hinge — standard" value={p.hinge.standard} unit={cur} onChange={(v) => nested('hinge', 'standard', v)} />
-        <PriceRow label="Hinge — soft-close" value={p.hinge.softClose} unit={cur} onChange={(v) => nested('hinge', 'softClose', v)} />
-        <PriceRow label="Slides — ball-bearing (pair)" value={p.slidePair.ballBearing} unit={cur} onChange={(v) => nested('slidePair', 'ballBearing', v)} />
-        <PriceRow label="Slides — undermount (pair)" value={p.slidePair.softCloseUndermount} unit={cur} onChange={(v) => nested('slidePair', 'softCloseUndermount', v)} />
-        <PriceRow label="Bar handle" value={p.handle.bar} unit={cur} onChange={(v) => nested('handle', 'bar', v)} />
-        <PriceRow label="Knob" value={p.handle.knob} unit={cur} onChange={(v) => nested('handle', 'knob', v)} />
-        <PriceRow label="Push-to-open latch" value={p.handle.none} unit={cur} onChange={(v) => nested('handle', 'none', v)} />
-        <PriceRow label="Hanging rod (per m)" value={p.hangingRodPerM} unit={cur} onChange={(hangingRodPerM) => patchPricing({ hangingRodPerM })} />
-        <PriceRow label="Rod end mount" value={p.rodMount} unit={cur} onChange={(rodMount) => patchPricing({ rodMount })} />
-        <PriceRow label="Shelf support pin" value={p.shelfSupport} unit={cur} onChange={(shelfSupport) => patchPricing({ shelfSupport })} />
-        <PriceRow label="Sliding track (per m)" value={p.slidingTrackPerM} unit={cur} onChange={(slidingTrackPerM) => patchPricing({ slidingTrackPerM })} />
-        <PriceRow label="Sliding roller set (per door)" value={p.slidingRollerSet} unit={cur} onChange={(slidingRollerSet) => patchPricing({ slidingRollerSet })} />
+      <Section title={`Okovët · ${cur} për copë`}>
+        <PriceRow label="Pagllama — standarde" value={p.hinge.standard} unit={cur} onChange={(v) => nested('hinge', 'standard', v)} />
+        <PriceRow label="Pagllama — mbyllje e butë" value={p.hinge.softClose} unit={cur} onChange={(v) => nested('hinge', 'softClose', v)} />
+        <PriceRow label="Shina — me sfera (palë)" value={p.slidePair.ballBearing} unit={cur} onChange={(v) => nested('slidePair', 'ballBearing', v)} />
+        <PriceRow label="Shina — nën sirtar (palë)" value={p.slidePair.softCloseUndermount} unit={cur} onChange={(v) => nested('slidePair', 'softCloseUndermount', v)} />
+        <PriceRow label="Dorezë shufër" value={p.handle.bar} unit={cur} onChange={(v) => nested('handle', 'bar', v)} />
+        <PriceRow label="Dorezë e rrumbullakët" value={p.handle.knob} unit={cur} onChange={(v) => nested('handle', 'knob', v)} />
+        <PriceRow label="Mekanizëm push-to-open" value={p.handle.none} unit={cur} onChange={(v) => nested('handle', 'none', v)} />
+        <PriceRow label="Shufër varëse (për m)" value={p.hangingRodPerM} unit={cur} onChange={(hangingRodPerM) => patchPricing({ hangingRodPerM })} />
+        <PriceRow label="Mbajtëse shufre" value={p.rodMount} unit={cur} onChange={(rodMount) => patchPricing({ rodMount })} />
+        <PriceRow label="Kunj mbajtës rafti" value={p.shelfSupport} unit={cur} onChange={(shelfSupport) => patchPricing({ shelfSupport })} />
+        <PriceRow label="Shinë rrëshqitëse (për m)" value={p.slidingTrackPerM} unit={cur} onChange={(slidingTrackPerM) => patchPricing({ slidingTrackPerM })} />
+        <PriceRow label="Set rrotash (për derë)" value={p.slidingRollerSet} unit={cur} onChange={(slidingRollerSet) => patchPricing({ slidingRollerSet })} />
       </Section>
 
-      <Section title="Labor & services">
+      <Section title="Puna & shërbimet">
         <Segmented<LaborMode>
           value={p.laborMode}
           options={[
-            { value: 'percent', label: '% of cost' },
-            { value: 'perM2', label: 'Per m²' },
-            { value: 'fixed', label: 'Fixed fee' },
+            { value: 'percent', label: '% e kostos' },
+            { value: 'perM2', label: 'Për m²' },
+            { value: 'fixed', label: 'Çmim fiks' },
           ]}
           onChange={(laborMode) => patchPricing({ laborMode })}
         />
         <PriceRow
-          label={p.laborMode === 'percent' ? 'Workmanship (% of materials + hardware)' : p.laborMode === 'perM2' ? 'Workmanship per m² of board' : 'Workmanship (project fee)'}
+          label={p.laborMode === 'percent' ? 'Puna (% e materialit + okovëve)' : p.laborMode === 'perM2' ? 'Puna për m² pllakë' : 'Puna (çmim për projekt)'}
           value={p.laborValue}
           unit={p.laborMode === 'percent' ? '%' : cur}
           onChange={(laborValue) => patchPricing({ laborValue })}
         />
-        <PriceRow label="Installation & delivery" value={p.installationFee} unit={cur} onChange={(installationFee) => patchPricing({ installationFee })} />
+        <PriceRow label="Montimi & transporti" value={p.installationFee} unit={cur} onChange={(installationFee) => patchPricing({ installationFee })} />
       </Section>
     </>
   );

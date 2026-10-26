@@ -1,4 +1,4 @@
-import { HANDLE_LABELS, HINGE_LABELS, materialById, SHEET, SLIDE_LABELS } from './catalog';
+import { HANDLE_FINISH_LABELS, HANDLE_LABELS, HINGE_LABELS, materialById, SHEET, SLIDE_LABELS } from './catalog';
 import type { CabinetConfig, Layout, Part, PartMaterial, PricingConfig } from './types';
 
 /** Extra edge banding per banded edge, for trimming the overhang at both ends. */
@@ -107,7 +107,7 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
     const net = ps.reduce((s, p) => s + partArea(p), 0);
     boards.push({
       material: m,
-      label: `${m === 'carcass' ? 'Carcass' : m === 'front' ? 'Fronts' : 'Back & drawer bottoms'} — ${materialLabel(cfg, m)}`,
+      label: `${m === 'carcass' ? 'Korpusi' : m === 'front' ? 'Frontet' : 'Shpina & fundet e sirtarëve'} — ${materialLabel(cfg, m)}`,
       priceKey: priceKeyOf(m),
       netArea: round(net),
       grossArea: round(net * waste),
@@ -136,8 +136,8 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
     });
   }
   if (cfg.doorType === 'sliding' && doors) {
-    hw.push({ id: 'track', name: 'Sliding track set (top + bottom)', qty: round(cfg.width / 1000, 2), unit: 'm', unitPrice: pricing.slidingTrackPerM });
-    hw.push({ id: 'roller', name: 'Sliding door roller set', qty: doors, unit: 'sets', unitPrice: pricing.slidingRollerSet });
+    hw.push({ id: 'track', name: 'Shina për dyer rrëshqitëse (lart + poshtë)', qty: round(cfg.width / 1000, 2), unit: 'm', unitPrice: pricing.slidingTrackPerM });
+    hw.push({ id: 'roller', name: 'Set rrotash për derë rrëshqitëse', qty: doors, unit: 'sets', unitPrice: pricing.slidingRollerSet });
   }
   if (drawers) {
     hw.push({ id: 'slide', name: SLIDE_LABELS[cfg.slideType], qty: drawers, unit: 'pairs', unitPrice: pricing.slidePair[cfg.slideType] });
@@ -145,18 +145,18 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
   if (doors + drawers) {
     hw.push({
       id: 'handle',
-      name: cfg.handleType === 'none' ? 'Push-to-open latch' : `${HANDLE_LABELS[cfg.handleType]} (${cfg.handleFinish})`,
+      name: cfg.handleType === 'none' ? 'Mekanizëm push-to-open' : `${HANDLE_LABELS[cfg.handleType]} (${HANDLE_FINISH_LABELS[cfg.handleFinish].toLowerCase()})`,
       qty: doors + drawers,
       unit: 'pcs',
       unitPrice: pricing.handle[cfg.handleType],
     });
   }
   if (rods.length) {
-    hw.push({ id: 'rod', name: 'Hanging rod (oval, chrome)', qty: rodMeters, unit: 'm', unitPrice: pricing.hangingRodPerM });
-    hw.push({ id: 'rodMount', name: 'Rod end mount', qty: rods.length * MOUNTS_PER_ROD, unit: 'pcs', unitPrice: pricing.rodMount });
+    hw.push({ id: 'rod', name: 'Shufër varëse (ovale, krom)', qty: rodMeters, unit: 'm', unitPrice: pricing.hangingRodPerM });
+    hw.push({ id: 'rodMount', name: 'Mbajtëse shufre', qty: rods.length * MOUNTS_PER_ROD, unit: 'pcs', unitPrice: pricing.rodMount });
   }
   if (shelves) {
-    hw.push({ id: 'shelfSupport', name: 'Shelf support pin', qty: shelves * SHELF_SUPPORTS_PER_SHELF, unit: 'pcs', unitPrice: pricing.shelfSupport });
+    hw.push({ id: 'shelfSupport', name: 'Kunj mbajtës rafti', qty: shelves * SHELF_SUPPORTS_PER_SHELF, unit: 'pcs', unitPrice: pricing.shelfSupport });
   }
 
   return {

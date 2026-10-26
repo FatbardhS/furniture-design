@@ -14,22 +14,25 @@ export interface MaterialDef {
 }
 
 export const MATERIALS: MaterialDef[] = [
-  { id: 'oak', name: 'Natural Oak', kind: 'wood', defaultColor: '#c89b6a', defaultGloss: 0.2, pricePerM2: 32, density: 720 },
-  { id: 'walnut', name: 'American Walnut', kind: 'wood', defaultColor: '#6b4a32', defaultGloss: 0.25, pricePerM2: 44, density: 720 },
-  { id: 'pine', name: 'Nordic Pine', kind: 'wood', defaultColor: '#e2bf86', defaultGloss: 0.15, pricePerM2: 22, density: 680 },
-  { id: 'ash', name: 'Grey Ash', kind: 'wood', defaultColor: '#a49c92', defaultGloss: 0.15, pricePerM2: 30, density: 720 },
-  { id: 'white-gloss', name: 'High-Gloss White MDF', kind: 'solid', defaultColor: '#f4f4f2', defaultGloss: 0.95, pricePerM2: 38, density: 750 },
-  { id: 'white-matte', name: 'Matte White Melamine', kind: 'solid', defaultColor: '#ecebe7', defaultGloss: 0.1, pricePerM2: 16, density: 700 },
-  { id: 'black-matte', name: 'Matte Black', kind: 'solid', defaultColor: '#222222', defaultGloss: 0.08, pricePerM2: 28, density: 750 },
-  { id: 'gray', name: 'Anthracite Gray', kind: 'solid', defaultColor: '#6d6f72', defaultGloss: 0.3, pricePerM2: 26, density: 750 },
-  { id: 'cashmere', name: 'Cashmere', kind: 'solid', defaultColor: '#cdbfae', defaultGloss: 0.2, pricePerM2: 27, density: 750 },
+  { id: 'oak', name: 'Lis natyral', kind: 'wood', defaultColor: '#c89b6a', defaultGloss: 0.2, pricePerM2: 32, density: 720 },
+  { id: 'walnut', name: 'Arrë amerikane', kind: 'wood', defaultColor: '#6b4a32', defaultGloss: 0.25, pricePerM2: 44, density: 720 },
+  { id: 'pine', name: 'Pishë nordike', kind: 'wood', defaultColor: '#e2bf86', defaultGloss: 0.15, pricePerM2: 22, density: 680 },
+  { id: 'ash', name: 'Frashër gri', kind: 'wood', defaultColor: '#a49c92', defaultGloss: 0.15, pricePerM2: 30, density: 720 },
+  { id: 'white-gloss', name: 'MDF e bardhë me shkëlqim', kind: 'solid', defaultColor: '#f4f4f2', defaultGloss: 0.95, pricePerM2: 38, density: 750 },
+  { id: 'white-matte', name: 'Melaminë e bardhë mat', kind: 'solid', defaultColor: '#ecebe7', defaultGloss: 0.1, pricePerM2: 16, density: 700 },
+  { id: 'black-matte', name: 'E zezë mat', kind: 'solid', defaultColor: '#222222', defaultGloss: 0.08, pricePerM2: 28, density: 750 },
+  { id: 'gray', name: 'Gri antracit', kind: 'solid', defaultColor: '#6d6f72', defaultGloss: 0.3, pricePerM2: 26, density: 750 },
+  { id: 'cashmere', name: 'Kashmir', kind: 'solid', defaultColor: '#cdbfae', defaultGloss: 0.2, pricePerM2: 27, density: 750 },
 ];
 
 export const materialById = (id: string): MaterialDef => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
 
-export const HANDLE_LABELS = { bar: 'Bar handle', knob: 'Round knob', none: 'Push-to-open (none)' } as const;
-export const HINGE_LABELS = { standard: 'Standard hinge', softClose: 'Soft-close hinge' } as const;
-export const SLIDE_LABELS = { ballBearing: 'Ball-bearing slides', softCloseUndermount: 'Soft-close undermount' } as const;
+export const HANDLE_LABELS = { bar: 'Dorezë shufër', knob: 'Dorezë e rrumbullakët', none: 'Push-to-open (pa dorezë)' } as const;
+export const HANDLE_FINISH_LABELS = { chrome: 'Krom', black: 'E zezë', brass: 'Bronz' } as const;
+/** Display names for BOM quantity units. */
+export const UNIT_LABELS = { pcs: 'copë', pairs: 'palë', m: 'm', sets: 'set' } as const;
+export const HINGE_LABELS = { standard: 'Pagllama standarde', softClose: 'Pagllama me mbyllje të butë' } as const;
+export const SLIDE_LABELS = { ballBearing: 'Shina me sfera', softCloseUndermount: 'Shina nën sirtar me mbyllje të butë' } as const;
 
 /** Standard drawer slide lengths in mm. */
 export const SLIDE_LENGTHS = [250, 300, 350, 400, 450, 500, 550, 600, 650];

@@ -30,12 +30,12 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
     const unit = boardPrice(pricing, b.priceKey);
     return {
       label: b.label,
-      detail: `${b.grossArea.toFixed(2)} m² × ${unit.toFixed(2)} (incl. ${pricing.wastePercent}% waste)`,
+      detail: `${b.grossArea.toFixed(2)} m² × ${unit.toFixed(2)} (me ${pricing.wastePercent}% humbje)`,
       amount: money(b.grossArea * unit),
     };
   });
   materialLines.push({
-    label: 'Edge banding',
+    label: 'Kanti',
     detail: `${bom.edgeBandingM.toFixed(2)} m × ${pricing.edgeBandingPerM.toFixed(2)}`,
     amount: money(bom.edgeBandingM * pricing.edgeBandingPerM),
   });
@@ -48,7 +48,7 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
   switch (pricing.laborMode) {
     case 'percent':
       laborSubtotal = ((materialSubtotal + hardwareSubtotal) * pricing.laborValue) / 100;
-      laborDetail = `${pricing.laborValue}% of materials + hardware`;
+      laborDetail = `${pricing.laborValue}% e materialit + okovëve`;
       break;
     case 'perM2':
       laborSubtotal = bom.totalBoardArea * pricing.laborValue;
@@ -56,7 +56,7 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
       break;
     case 'fixed':
       laborSubtotal = pricing.laborValue;
-      laborDetail = 'Fixed project fee';
+      laborDetail = 'Çmim fiks për projektin';
       break;
   }
   laborSubtotal = money(laborSubtotal);
@@ -77,5 +77,6 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
   };
 }
 
+/** Kosovo / EU style: 1.234,56 € */
 export const formatMoney = (v: number, currency: string) =>
-  `${currency}${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;

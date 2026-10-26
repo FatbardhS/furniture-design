@@ -21,30 +21,30 @@ export function DoorsPanel({ c }: { c: Configurator }) {
 
   return (
     <>
-      <Section title="Doors">
+      <Section title="Dyert">
         <Segmented
           value={config.doorType}
           options={[
-            { value: 'none', label: 'Open shelving' },
-            { value: 'hinged', label: 'Hinged' },
-            { value: 'sliding', label: 'Sliding' },
+            { value: 'none', label: 'Pa dyer' },
+            { value: 'hinged', label: 'Me pagllama' },
+            { value: 'sliding', label: 'Rrëshqitëse' },
           ]}
           onChange={setType}
         />
         {config.doorType === 'hinged' && (
-          <Field label="Door layout">
+          <Field label="Vendosja e dyerve">
             <Segmented<DoorLayout>
               value={config.doorLayout}
               options={[
-                { value: 'even', label: 'Across full width' },
-                { value: 'perColumn', label: 'Per section' },
+                { value: 'even', label: 'Në gjithë gjerësinë' },
+                { value: 'perColumn', label: 'Për seksion' },
               ]}
               onChange={(doorLayout) => patch({ doorLayout })}
             />
           </Field>
         )}
         {config.doorType !== 'none' && !perColumn && (
-          <Field label="Number of doors">
+          <Field label="Numri i dyerve">
             <div className="flex items-center gap-2">
               <Button onClick={() => patch({ doorCount: config.doorCount - 1 })} disabled={config.doorCount <= min}>
                 <Icon name="minus" />
@@ -59,14 +59,14 @@ export function DoorsPanel({ c }: { c: Configurator }) {
         {config.doorType !== 'none' && doors.count > 0 && (
           <div className="grid grid-cols-2 gap-2">
             <Stat
-              label={perColumn ? 'Largest door' : 'Door size'}
+              label={perColumn ? 'Dera më e madhe' : 'Madhësia e derës'}
               value={`${fmtLen(doors.width, unit)} × ${fmtLen(doors.height, unit)}`}
-              sub={`${doors.count} ${doors.count === 1 ? 'door' : 'doors'} · ${doors.weightKg.toFixed(1)} kg`}
+              sub={`${doors.count} ${doors.count === 1 ? 'derë' : 'dyer'} · ${doors.weightKg.toFixed(1)} kg`}
             />
             <Stat
-              label={config.doorType === 'hinged' ? 'Hinges' : 'Track'}
-              value={config.doorType === 'hinged' ? `${doors.hingeTotal} total` : '2 tracks'}
-              sub={config.doorType === 'hinged' ? 'by door height & weight' : 'top + bottom'}
+              label={config.doorType === 'hinged' ? 'Pagllama' : 'Shina'}
+              value={config.doorType === 'hinged' ? `${doors.hingeTotal} gjithsej` : '2 shina'}
+              sub={config.doorType === 'hinged' ? 'sipas lartësisë & peshës' : 'lart + poshtë'}
             />
           </div>
         )}
@@ -74,8 +74,8 @@ export function DoorsPanel({ c }: { c: Configurator }) {
 
       {perColumn && <SectionDoors c={c} />}
 
-      <Section title="Hardware">
-        <Field label="Handles">
+      <Section title="Okovët">
+        <Field label="Dorezat">
           <Select<HandleType>
             value={config.handleType}
             options={(Object.keys(HANDLE_LABELS) as HandleType[]).map((k) => ({ value: k, label: HANDLE_LABELS[k] }))}
@@ -83,36 +83,36 @@ export function DoorsPanel({ c }: { c: Configurator }) {
           />
         </Field>
         {config.handleType !== 'none' && (
-          <Field label="Handle finish">
+          <Field label="Ngjyra e dorezës">
             <Segmented<HandleFinish>
               value={config.handleFinish}
               options={[
-                { value: 'chrome', label: 'Chrome' },
-                { value: 'black', label: 'Black' },
-                { value: 'brass', label: 'Brass' },
+                { value: 'chrome', label: 'Krom' },
+                { value: 'black', label: 'E zezë' },
+                { value: 'brass', label: 'Bronz' },
               ]}
               onChange={(handleFinish) => patch({ handleFinish })}
             />
           </Field>
         )}
         {config.doorType === 'hinged' && (
-          <Field label="Hinges (pagllama)">
+          <Field label="Pagllamat">
             <Segmented
               value={config.hingeType}
               options={[
-                { value: 'standard', label: 'Standard' },
-                { value: 'softClose', label: 'Soft-close' },
+                { value: 'standard', label: 'Standarde' },
+                { value: 'softClose', label: 'Mbyllje e butë' },
               ]}
               onChange={(hingeType) => patch({ hingeType })}
             />
           </Field>
         )}
-        <Field label="Drawer slides">
+        <Field label="Shinat e sirtarëve">
           <Segmented
             value={config.slideType}
             options={[
-              { value: 'ballBearing', label: 'Ball-bearing' },
-              { value: 'softCloseUndermount', label: 'Soft-close undermount' },
+              { value: 'ballBearing', label: 'Me sfera' },
+              { value: 'softCloseUndermount', label: 'Nën sirtar, mbyllje e butë' },
             ]}
             onChange={(slideType) => patch({ slideType })}
           />
@@ -145,21 +145,21 @@ function SectionDoors({ c }: { c: Configurator }) {
   };
 
   return (
-    <Section title="Doors per section">
+    <Section title="Dyert për seksion">
       {config.columns.map((col, ci) => {
         const d = columnDoors(col, ci, n, columnWidth);
         return (
           <div key={col.id} className="rounded-lg border border-stone-200 bg-white p-2.5">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-stone-700">Section {ci + 1}</span>
-              <span className="text-[11px] text-stone-400">{fmtLen(columnWidth, unit)} wide</span>
+              <span className="text-xs font-semibold text-stone-700">Seksioni {ci + 1}</span>
+              <span className="text-[11px] text-stone-400">{fmtLen(columnWidth, unit)} gjerësi</span>
             </div>
             <Segmented<'0' | '1' | '2'>
               value={String(d.count) as '0' | '1' | '2'}
               options={[
-                { value: '0', label: 'Open' },
-                { value: '1', label: '1 door' },
-                { value: '2', label: '2 doors' },
+                { value: '0', label: 'Pa derë' },
+                { value: '1', label: '1 derë' },
+                { value: '2', label: '2 dyer' },
               ]}
               onChange={(v) => setDoors(ci, { count: +v as 0 | 1 | 2 })}
             />
@@ -168,8 +168,8 @@ function SectionDoors({ c }: { c: Configurator }) {
                 <Segmented
                   value={d.hinge}
                   options={[
-                    { value: 'left', label: 'Hinge left' },
-                    { value: 'right', label: 'Hinge right' },
+                    { value: 'left', label: 'Pagllama majtas' },
+                    { value: 'right', label: 'Pagllama djathtas' },
                   ]}
                   onChange={(hinge) => setDoors(ci, { hinge })}
                 />
@@ -184,11 +184,11 @@ function SectionDoors({ c }: { c: Configurator }) {
                     checked={d.split != null}
                     onChange={(e) => setDoors(ci, { split: e.target.checked ? defaultSplit(ci) : null })}
                   />
-                  Split upper / lower
+                  Ndaj lart / poshtë
                 </label>
                 {d.split != null && (
                   <div className="flex-1">
-                    <Field label="Split at">
+                    <Field label="Ndarja në">
                       <LengthInput mm={d.split} unit={unit} min={100} max={Hi - 100} onChange={(split) => setDoors(ci, { split })} />
                     </Field>
                   </div>

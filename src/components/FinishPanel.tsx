@@ -7,8 +7,8 @@ export function FinishPanel({ c }: { c: Configurator }) {
   const { config, patch } = c;
   return (
     <>
-      <FinishEditor title="Fronts (doors & drawer fronts)" finish={config.frontFinish} onChange={(frontFinish) => patch({ frontFinish })} />
-      <FinishEditor title="Carcass & interior" finish={config.carcassFinish} onChange={(carcassFinish) => patch({ carcassFinish })} />
+      <FinishEditor title="Frontet (dyert & ballet e sirtarëve)" finish={config.frontFinish} onChange={(frontFinish) => patch({ frontFinish })} />
+      <FinishEditor title="Korpusi & brendësia" finish={config.carcassFinish} onChange={(carcassFinish) => patch({ carcassFinish })} />
     </>
   );
 }
@@ -44,7 +44,7 @@ function FinishEditor({ title, finish, onChange }: { title: string; finish: Fini
         ))}
       </div>
       <div className="grid grid-cols-[auto_1fr] items-end gap-3">
-        <Field label="Colour / stain">
+        <Field label="Ngjyra / bajca">
           <input
             type="color"
             value={finish.color}
@@ -52,13 +52,13 @@ function FinishEditor({ title, finish, onChange }: { title: string; finish: Fini
             className="h-8 w-14 cursor-pointer rounded-md border border-stone-300 bg-white p-0.5"
           />
         </Field>
-        <Field label="Glossiness" hint={finish.gloss < 0.25 ? 'Matte' : finish.gloss < 0.6 ? 'Satin' : 'High gloss'}>
+        <Field label="Shkëlqimi" hint={finish.gloss < 0.25 ? 'Mat' : finish.gloss < 0.6 ? 'Satin' : 'Shkëlqim i lartë'}>
           <Slider value={finish.gloss} min={0} max={1} step={0.01} onChange={(gloss) => onChange({ ...finish, gloss })} />
         </Field>
       </div>
       {finish.color !== current.defaultColor && (
         <button className="text-[11px] text-accent-600 hover:underline" onClick={() => onChange({ ...finish, color: current.defaultColor, gloss: current.defaultGloss })}>
-          Reset to {current.name} defaults
+          Rikthe vlerat e {current.name}
         </button>
       )}
     </Section>
