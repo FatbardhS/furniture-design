@@ -101,6 +101,8 @@ export interface DrawerSpec {
   T: number;
   Tb: number;
   handleType: HandleType;
+  /** Front design when it differs from the wardrobe's (room items). */
+  style?: FrontStyle;
 }
 
 /** One drawer: front, box (sides, ends, bottom) and handle, all moving together on its slides. */
@@ -124,6 +126,7 @@ export function addDrawer(parts: Part[], fixtures: Fixture[], d: DrawerSpec) {
     grain: 'x',
     motion,
     group,
+    style: d.style,
   });
   const boxD = d.slideLen;
   const boxZ = d.frontZ - T / 2 - boxD / 2;
@@ -201,7 +204,7 @@ export const slideClearance = (t: SlideType) => SLIDE_SIDE_CLEARANCE[t];
 
 /** Design of a front: a door's own override, else the wardrobe-wide design. */
 export const frontStyleOf = (cfg: CabinetConfig, part: Part): FrontStyle =>
-  (part.category === 'door' && cfg.doorStyles?.[part.id]) || cfg.frontStyle;
+  part.style ?? ((part.category === 'door' && cfg.doorStyles?.[part.id]) || cfg.frontStyle);
 
 /** Edge pulls and gola profiles mount on the front's edge rather than inset on its face. */
 const onEdge = (type: HandleType) => type === 'edge' || type === 'gola';
@@ -235,7 +238,7 @@ interface RunOptions {
   tightRight?: boolean;
 }
 
-type RunLayout = Omit<Layout, 'groups' | 'mirrorArea' | 'wing'>;
+type RunLayout = Omit<Layout, 'groups' | 'mirrorArea' | 'upholsteryArea' | 'wing'>;
 
 /**
  * Turn a configuration into physical parts. This is the single source of truth: the 3D renderer
@@ -299,7 +302,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   const ids = new Set([...parts.map((p) => p.id), ...fixtures.map((f) => f.id)]);
   for (const w of warnings) if (w.focus?.partIds) w.focus = { ...w.focus, partIds: w.focus.partIds.filter((id) => ids.has(id)) };
 
-  return { parts, fixtures, warnings, groups, interior: main.interior, doors, wing, mirrorArea: room.mirrorArea };
+  return { parts, fixtures, warnings, groups, interior: main.interior, doors, wing, mirrorArea: room.mirrorArea, upholsteryArea: room.upholsteryArea };
 }
 
 /**

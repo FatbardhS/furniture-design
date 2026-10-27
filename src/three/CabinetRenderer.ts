@@ -331,6 +331,9 @@ export class CabinetRenderer {
       this.geometries.push(edges);
       mesh.add(new THREE.LineSegments(edges, this.seamMaterial()));
       this.decorateFront(mesh, part, style);
+    } else if (part.style) {
+      // Room-item boards with their own design (panelled or fluted headboard).
+      this.decorateFront(mesh, part, style);
     }
     return mesh;
   }
@@ -378,6 +381,8 @@ export class CabinetRenderer {
         return this.handleMesh(cfg.handleType, fx.length, fx.orientation, cfg.handleFinish, fx.side ?? 1);
       case 'mirror':
         return this.mirrorMesh(fx.shape, fx.width, fx.height, cfg.handleFinish);
+      case 'cushion':
+        return this.softMesh('cushion', fx.size, fx.color);
       case 'mattress':
       case 'pillow':
         return this.softMesh(fx.kind, fx.size);
@@ -405,16 +410,16 @@ export class CabinetRenderer {
   }
 
   /** Mattress and pillows: soft rounded boxes in a pale fabric. */
-  private softMesh(kind: 'mattress' | 'pillow', sizeMm: Vec3): THREE.Object3D {
+  private softMesh(kind: 'mattress' | 'pillow' | 'cushion', sizeMm: Vec3, color?: string): THREE.Object3D {
     const [sx, sy, sz] = sizeMm.map((s) => s * MM);
-    const radius = kind === 'mattress' ? 0.035 : 0.05;
-    const geo = new RoundedBoxGeometry(sx, sy, sz, 4, Math.min(radius, sy / 2 - 0.001));
+    const radius = kind === 'mattress' ? 0.035 : kind === 'cushion' ? 0.03 : 0.05;
+    const geo = new RoundedBoxGeometry(sx, sy, sz, 4, Math.min(radius, sy / 2 - 0.001, sz / 2 - 0.001));
     this.geometries.push(geo);
-    const key = `fabric|${kind}`;
+    const key = `fabric|${kind}|${color ?? ''}`;
     this.usedMaterials.add(key);
     let mat = this.materials.get(key);
     if (!mat) {
-      mat = new THREE.MeshStandardMaterial({ color: kind === 'mattress' ? '#efede7' : '#faf9f6', roughness: 0.95 });
+      mat = new THREE.MeshStandardMaterial({ color: color ?? (kind === 'mattress' ? '#efede7' : '#faf9f6'), roughness: 0.95 });
       this.materials.set(key, mat);
     }
     const mesh = new THREE.Mesh(geo, mat);

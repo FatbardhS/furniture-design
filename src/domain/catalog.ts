@@ -198,6 +198,8 @@ export function defaultPricing(): PricingConfig {
     handle: { bar: 3, square: 4, long: 9, knob: 1.5, edge: 5, gola: 8, none: 4.5 },
     frontStylePerM2: { flat: 0, shaker: 15, fluted: 20, glass: 55, mirror: 40 },
     hangingRodPerM: 4,
+    // Foam, fabric and upholstering for headboard cushions.
+    upholsteryPerM2: 45,
     rodMount: 0.8,
     shelfSupport: 0.05,
     slidingTrackPerM: 15,

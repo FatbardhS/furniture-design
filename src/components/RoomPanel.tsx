@@ -1,6 +1,6 @@
-import { HEADBOARD_LABELS, MIRROR_LABELS, ROOM_LABELS, type RoomPreset } from '../domain/room';
+import { bedSpec, CUSHION_LABELS, FABRICS, HEADBOARD_DESIGN_LABELS, MIRROR_LABELS, PIECE_STYLE_LABELS, ROOM_LABELS, type RoomPreset } from '../domain/room';
 import { fmtLen } from '../domain/units';
-import type { ActiveFocus, BedItem, DresserItem, Headboard, MirrorItem, MirrorShape, RoomItem } from '../domain/types';
+import type { ActiveFocus, BedItem, CushionStyle, DresserItem, HeadboardDesign, MirrorItem, MirrorShape, PieceStyle, RoomItem } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon } from './icons';
 import { Button, Field, Flag, LengthInput, NumberInput, Section, Segmented } from './ui';
@@ -94,7 +94,8 @@ export function RoomPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | 
   );
 }
 
-function DresserFields({ it, c }: { it: DresserItem; c: Configurator }) {
+/** Dresser body: size, drawers, front design and base. */
+export function DresserBodyFields({ it, c }: { it: DresserItem; c: Configurator }) {
   const { updateExtra, unit } = c;
   const set = (p: Partial<DresserItem>) => updateExtra(it.id, p);
   return (
@@ -118,6 +119,33 @@ function DresserFields({ it, c }: { it: DresserItem; c: Configurator }) {
           <Segmented<1 | 2> value={it.perRow} options={[{ value: 1, label: '1' }, { value: 2, label: '2' }]} onChange={(perRow) => set({ perRow })} />
         </Field>
       </div>
+      <Field label="Dizajni i balleve">
+        <Segmented<PieceStyle>
+          value={it.frontStyle ?? 'flat'}
+          options={(Object.keys(PIECE_STYLE_LABELS) as PieceStyle[]).map((s) => ({ value: s, label: PIECE_STYLE_LABELS[s] }))}
+          onChange={(frontStyle) => set({ frontStyle })}
+        />
+      </Field>
+      <Field label="Baza">
+        <Segmented<'plinth' | 'legs'>
+          value={it.base ?? 'plinth'}
+          options={[
+            { value: 'plinth', label: 'Sokël' },
+            { value: 'legs', label: 'Këmbë' },
+          ]}
+          onChange={(base) => set({ base })}
+        />
+      </Field>
+    </>
+  );
+}
+
+/** The mirror hung above a dresser. */
+export function DresserMirrorFields({ it, c }: { it: DresserItem; c: Configurator }) {
+  const { updateExtra, unit } = c;
+  const set = (p: Partial<DresserItem>) => updateExtra(it.id, p);
+  return (
+    <>
       <Field label="Pasqyra mbi komodë" hint={it.mirror === 'none' ? '' : MIRROR_LABELS[it.mirror]}>
         <Segmented<MirrorShape>
           value={it.mirror}
@@ -139,7 +167,16 @@ function DresserFields({ it, c }: { it: DresserItem; c: Configurator }) {
   );
 }
 
-function MirrorFields({ it, c }: { it: MirrorItem; c: Configurator }) {
+function DresserFields({ it, c }: { it: DresserItem; c: Configurator }) {
+  return (
+    <>
+      <DresserBodyFields it={it} c={c} />
+      <DresserMirrorFields it={it} c={c} />
+    </>
+  );
+}
+
+export function MirrorFields({ it, c }: { it: MirrorItem; c: Configurator }) {
   const { updateExtra, unit } = c;
   const set = (p: Partial<MirrorItem>) => updateExtra(it.id, p);
   return (
@@ -166,7 +203,105 @@ function MirrorFields({ it, c }: { it: MirrorItem; c: Configurator }) {
   );
 }
 
-function BedFields({ it, c }: { it: BedItem; c: Configurator }) {
+const SubTitle = ({ children }: { children: string }) => <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-stone-400">{children}</div>;
+
+/** Headboard: height, width past the frame, design and upholstered cushions. */
+export function BedHeadFields({ it, c }: { it: BedItem; c: Configurator }) {
+  const { updateExtra, unit } = c;
+  const b = bedSpec(it);
+  const set = (p: Partial<BedItem>) => updateExtra(it.id, p);
+  return (
+    <>
+      <Field label="Lartësia e kokës" hint="nga dyshemeja">
+        <div className="space-y-1.5">
+          <Segmented
+            value={[700, 1000, 1300, 1600].includes(b.headboardHeight) ? b.headboardHeight : -1}
+            options={[
+              { value: 700, label: 'E ulët' },
+              { value: 1000, label: 'Mesatare' },
+              { value: 1300, label: 'E lartë' },
+              { value: 1600, label: 'Deri lart' },
+            ]}
+            onChange={(headboardHeight) => set({ headboardHeight })}
+          />
+          <LengthInput mm={b.headboardHeight} unit={unit} min={b.frameHeight} max={2400} onChange={(headboardHeight) => set({ headboardHeight })} />
+        </div>
+      </Field>
+      <Field label="Zgjatja anash (për çdo anë)" hint="p.sh. pas komodinave">
+        <LengthInput mm={b.headboardExtra} unit={unit} min={0} max={1200} onChange={(headboardExtra) => set({ headboardExtra })} />
+      </Field>
+      <Field label="Dizajni i kokës">
+        <Segmented<HeadboardDesign>
+          value={b.headboardDesign}
+          options={(Object.keys(HEADBOARD_DESIGN_LABELS) as HeadboardDesign[]).map((d) => ({ value: d, label: HEADBOARD_DESIGN_LABELS[d] }))}
+          onChange={(headboardDesign) => set({ headboardDesign })}
+        />
+      </Field>
+      <Field label="Jastëkë të tapicuar">
+        <Segmented<CushionStyle>
+          value={b.cushions}
+          options={(Object.keys(CUSHION_LABELS) as CushionStyle[]).map((s) => ({ value: s, label: CUSHION_LABELS[s] }))}
+          onChange={(cushions) => set({ cushions })}
+        />
+      </Field>
+      {b.cushions !== 'none' && (
+        <Field label="Pëlhura">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {FABRICS.map((f) => (
+              <button
+                key={f.hex}
+                type="button"
+                title={f.name}
+                onClick={() => set({ fabric: f.hex })}
+                className={`h-6 w-6 rounded-full border ${b.fabric === f.hex ? 'ring-2 ring-accent-500 ring-offset-1' : 'border-stone-300'}`}
+                style={{ background: f.hex }}
+              />
+            ))}
+            <input type="color" className="h-6 w-8 cursor-pointer rounded border border-stone-300" value={b.fabric} onChange={(e) => set({ fabric: e.target.value })} title="Ngjyrë tjetër" />
+          </div>
+        </Field>
+      )}
+    </>
+  );
+}
+
+/** Frame: rail height, box or legs, and which finish the frame and headboard take. */
+export function BedFrameFields({ it, c }: { it: BedItem; c: Configurator }) {
+  const { updateExtra, unit } = c;
+  const b = bedSpec(it);
+  const set = (p: Partial<BedItem>) => updateExtra(it.id, p);
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Lartësia e kornizës">
+          <LengthInput mm={b.frameHeight} unit={unit} min={200} max={500} onChange={(frameHeight) => set({ frameHeight })} />
+        </Field>
+        <Field label="Baza">
+          <Segmented<'box' | 'legs'>
+            value={b.base}
+            options={[
+              { value: 'box', label: 'Deri në tokë' },
+              { value: 'legs', label: 'Me këmbë' },
+            ]}
+            onChange={(base) => set({ base })}
+          />
+        </Field>
+      </div>
+      <Field label="Materiali i kornizës & kokës">
+        <Segmented<'front' | 'carcass'>
+          value={b.finish}
+          options={[
+            { value: 'front', label: 'Si frontet' },
+            { value: 'carcass', label: 'Si korpusi' },
+          ]}
+          onChange={(finish) => set({ finish })}
+        />
+      </Field>
+    </>
+  );
+}
+
+export function BedMattressFields({ it, c }: { it: BedItem; c: Configurator }) {
   const { updateExtra, unit } = c;
   const set = (p: Partial<BedItem>) => updateExtra(it.id, p);
   return (
@@ -177,14 +312,20 @@ function BedFields({ it, c }: { it: BedItem; c: Configurator }) {
       <Field label="Gjatësia e dyshekut" hint={fmtLen(it.mattressLength, unit)}>
         <Segmented value={it.mattressLength} options={MATTRESS_LENGTHS.map((v) => ({ value: v, label: `${v / 10}` }))} onChange={(mattressLength) => set({ mattressLength })} />
       </Field>
-      <Field label="Koka e shtratit">
-        <Segmented<Headboard>
-          value={it.headboard}
-          options={(Object.keys(HEADBOARD_LABELS) as Headboard[]).map((h) => ({ value: h, label: HEADBOARD_LABELS[h] }))}
-          onChange={(headboard) => set({ headboard })}
-        />
-      </Field>
-      <p className="text-[11px] text-stone-500">Korniza e shtratit llogaritet në materiale; dysheku nuk përfshihet në ofertë.</p>
+    </>
+  );
+}
+
+function BedFields({ it, c }: { it: BedItem; c: Configurator }) {
+  return (
+    <>
+      <SubTitle>Koka e shtratit</SubTitle>
+      <BedHeadFields it={it} c={c} />
+      <SubTitle>Korniza</SubTitle>
+      <BedFrameFields it={it} c={c} />
+      <SubTitle>Dysheku</SubTitle>
+      <BedMattressFields it={it} c={c} />
+      <p className="text-[11px] text-stone-500">Korniza, koka dhe tapiceria llogariten në ofertë; dysheku nuk përfshihet. Klikoni një pjesë në 3D për ta ndryshuar veçmas.</p>
     </>
   );
 }

@@ -96,7 +96,17 @@ export interface DresserItem extends RoomItemBase {
   mirror: MirrorShape;
   mirrorWidth: number;
   mirrorHeight: number;
+  /** Drawer front design (defaults to flat). */
+  frontStyle?: PieceStyle;
+  /** Stands on a recessed plinth or on four legs. */
+  base?: 'plinth' | 'legs';
 }
+
+/** Designs a room item's fronts / headboard can take (glass and mirror stay wardrobe-only). */
+export type PieceStyle = 'flat' | 'shaker' | 'fluted';
+export type HeadboardDesign = 'flat' | 'panels' | 'fluted' | 'slats';
+/** Upholstered cushions on the headboard. */
+export type CushionStyle = 'none' | 'panel' | 'channels' | 'tufted';
 
 export interface MirrorItem extends RoomItemBase {
   kind: 'mirror';
@@ -111,7 +121,21 @@ export interface BedItem extends RoomItemBase {
   kind: 'bed';
   mattressWidth: number;
   mattressLength: number;
+  /** Older saves only have this preset; the fields below override it. */
   headboard: Headboard;
+  /** Headboard height from the floor (mm). */
+  headboardHeight?: number;
+  /** How far the headboard reaches past the frame on each side (mm), e.g. to back the nightstands. */
+  headboardExtra?: number;
+  headboardDesign?: HeadboardDesign;
+  cushions?: CushionStyle;
+  /** Upholstery fabric colour (hex). */
+  fabric?: string;
+  /** Height of the side rails / foot board (mm). */
+  frameHeight?: number;
+  base?: 'box' | 'legs';
+  /** Which finish the frame and headboard use: the wardrobe fronts or its carcass. */
+  finish?: 'front' | 'carcass';
 }
 
 export type RoomItem = DresserItem | MirrorItem | BedItem;
@@ -162,6 +186,8 @@ export interface PricingConfig {
   /** Extra cost per m² of door front for each design (milling, glass, mirror). */
   frontStylePerM2: Record<FrontStyle, number>;
   hangingRodPerM: number;
+  /** Upholstered headboard cushions, per m² of cushion front (foam, fabric, work). */
+  upholsteryPerM2: number;
   rodMount: number;
   shelfSupport: number;
   slidingTrackPerM: number;
@@ -222,12 +248,15 @@ export interface Part {
   column?: number;
   /** Placement group (corner wing or a room item); position is relative to it. */
   group?: string;
+  /** Surface design of this board (room item fronts, headboards); overrides the wardrobe's. */
+  style?: FrontStyle;
 }
 
 export type Fixture = (
   | { kind: 'rod'; id: string; position: Vec3; length: number; motionKey?: string }
   | { kind: 'mirror'; id: string; position: Vec3; shape: Exclude<MirrorShape, 'none'>; width: number; height: number; motionKey?: string }
   | { kind: 'mattress' | 'pillow'; id: string; position: Vec3; size: Vec3; motionKey?: string }
+  | { kind: 'cushion'; id: string; position: Vec3; size: Vec3; color: string; motionKey?: string }
   | {
       kind: 'handle';
       id: string;
@@ -295,6 +324,8 @@ export interface Layout {
   wing?: { interior: Layout['interior'] };
   /** Mirror glass area of the room items, m². */
   mirrorArea: number;
+  /** Upholstered headboard cushion area, m². */
+  upholsteryArea: number;
 }
 
 /** The warning focus the user is currently looking at; `nonce` changes on every click. */

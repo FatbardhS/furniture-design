@@ -6,8 +6,11 @@ import type { Selection } from '../domain/selection';
 import type { InteriorItem, RoomItem } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { DoorStylePicker } from './FinishPanel';
+import { BedFrameFields, BedHeadFields, BedMattressFields, DresserBodyFields, DresserMirrorFields, MirrorFields } from './RoomPanel';
 import { Icon, type IconName } from './icons';
 import { Button, Field, LengthInput, Segmented, Slider } from './ui';
+
+const PIECE_TITLES = { head: 'Koka', frame: 'Korniza', mattress: 'Dysheku', mirror: 'Pasqyra', body: 'Trupi' } as const;
 
 const ITEM_TITLES: Record<string, { label: string; icon: IconName }> = {
   shelf: { label: 'Raft', icon: 'shelf' },
@@ -28,10 +31,21 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
   let body: ReactNode;
 
   if (selection.kind === 'extra') {
-    const { extra } = selection;
-    title = extra.kind === 'dresser' && extra.width <= 600 ? 'Komodinë' : ROOM_LABELS[extra.kind];
+    const { extra, piece } = selection;
+    const name = extra.kind === 'dresser' && extra.width <= 600 ? 'Komodinë' : ROOM_LABELS[extra.kind];
+    title = piece in PIECE_TITLES && extra.kind !== 'mirror' ? `${name} · ${PIECE_TITLES[piece as keyof typeof PIECE_TITLES]}` : name;
+    const pieceFields =
+      extra.kind === 'bed' ? (
+        piece === 'head' ? <BedHeadFields it={extra} c={c} /> : piece === 'mattress' ? <BedMattressFields it={extra} c={c} /> : <BedFrameFields it={extra} c={c} />
+      ) : extra.kind === 'dresser' ? (
+        piece === 'mirror' ? <DresserMirrorFields it={extra} c={c} /> : <DresserBodyFields it={extra} c={c} />
+      ) : (
+        <MirrorFields it={extra} c={c} />
+      );
     body = (
       <>
+        <div className="max-h-[50vh] space-y-2.5 overflow-y-auto pr-1 scrollbar-thin">{pieceFields}</div>
+        <div className="border-t border-stone-100" />
         <div className="grid grid-cols-2 gap-2">
           <Field label="Majtas/djathtas">
             <LengthInput mm={extra.x} unit={unit} min={-15000} max={15000} onChange={(x) => c.updateExtra(extra.id, { x })} />

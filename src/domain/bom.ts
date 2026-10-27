@@ -60,6 +60,8 @@ export interface Bom {
   styledFronts: Partial<Record<FrontStyle, number>>;
   /** Mirror glass of room items (dresser mirrors, wall mirrors), m². */
   mirrorArea: number;
+  /** Upholstered headboard cushions, m². */
+  upholsteryArea: number;
 }
 
 const round = (v: number, dp = 3) => Math.round(v * 10 ** dp) / 10 ** dp;
@@ -105,7 +107,9 @@ function styledFronts(cfg: CabinetConfig, parts: Part[]) {
   const byStyle: Partial<Record<FrontStyle, number>> = {};
   for (const p of parts) {
     const style = frontStyleOf(cfg, p);
-    const counts = p.category === 'door' || (p.category === 'drawerFront' && (style === 'shaker' || style === 'fluted'));
+    const milled = style === 'shaker' || style === 'fluted';
+    // Room-item boards (e.g. a panelled headboard) only count when they carry their own design.
+    const counts = p.category === 'door' || (p.category === 'drawerFront' && milled) || (p.category === 'panel' && !!p.style && milled);
     if (counts) byStyle[style] = (byStyle[style] ?? 0) + partArea(p);
   }
   for (const k of Object.keys(byStyle) as FrontStyle[]) byStyle[k] = round(byStyle[k]!);
@@ -190,5 +194,6 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
     frontStyle: cfg.frontStyle,
     ...styledFronts(cfg, parts),
     mirrorArea: round(layout.mirrorArea ?? 0),
+    upholsteryArea: round(layout.upholsteryArea ?? 0),
   };
 }

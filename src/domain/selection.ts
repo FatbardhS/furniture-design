@@ -1,5 +1,5 @@
 import { itemPartIds, WING_PREFIX } from './layout';
-import { roomGroup } from './room';
+import { roomGroup, roomPiece, roomPrefix, type RoomPiece } from './room';
 import type { CabinetConfig, InteriorItem, Layout, Part, RoomItem, WarningFocus } from './types';
 
 /** What a click in the 3D view picked, resolved against the current configuration. */
@@ -7,7 +7,7 @@ export type Selection =
   | { kind: 'item'; column: number; item: InteriorItem; partIds: string[]; wing?: boolean }
   | { kind: 'door'; part: Part; column?: number; partIds: string[]; wing?: boolean }
   | { kind: 'carcass'; part: Part; partIds: string[]; wing?: boolean }
-  | { kind: 'extra'; extra: RoomItem; partIds: string[] };
+  | { kind: 'extra'; extra: RoomItem; piece: RoomPiece; partIds: string[] };
 
 /**
  * Map a picked part / fixture id back to the thing the user edits. A drawer is one selection
@@ -18,9 +18,15 @@ export function describePart(partId: string, cfg: CabinetConfig, layout: Layout)
   // Room items select as a whole.
   const extra = cfg.extras?.find((x) => partId.startsWith(roomGroup(x.id) + ':'));
   if (extra) {
+    // A bed or dresser is edited piece by piece: the headboard, the frame, the mirror…
     const g = roomGroup(extra.id);
-    const ids = [...layout.parts.filter((p) => p.group === g).map((p) => p.id), ...layout.fixtures.filter((f) => f.group === g).map((f) => f.id)];
-    return { kind: 'extra', extra, partIds: ids };
+    const pre = roomPrefix(extra.id);
+    const raw = roomPiece(partId.slice(pre.length));
+    // A dresser is one piece apart from its mirror.
+    const piece = extra.kind === 'dresser' && raw !== 'mirror' ? 'body' : raw;
+    const all = [...layout.parts.filter((p) => p.group === g).map((p) => p.id), ...layout.fixtures.filter((f) => f.group === g).map((f) => f.id)];
+    const ids = piece === 'body' ? all : all.filter((id) => roomPiece(id.slice(pre.length)) === piece);
+    return { kind: 'extra', extra, piece, partIds: ids };
   }
 
   const wing = partId.startsWith(WING_PREFIX);

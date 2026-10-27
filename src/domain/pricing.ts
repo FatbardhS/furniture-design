@@ -62,7 +62,16 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
     });
   }
 
-  const materialSubtotal =money(materialLines.reduce((s, l) => s + l.amount, 0));
+  if (bom.upholsteryArea > 0) {
+    const rate = pricing.upholsteryPerM2 ?? 0;
+    materialLines.push({
+      label: 'Tapiceria e kokës së shtratit',
+      detail: `${bom.upholsteryArea.toFixed(2)} m² × ${rate.toFixed(2)}`,
+      amount: money(bom.upholsteryArea * rate),
+    });
+  }
+
+  const materialSubtotal = money(materialLines.reduce((s, l) => s + l.amount, 0));
   const hardwareSubtotal = money(bom.hardware.reduce((s, h) => s + h.total, 0));
 
   let laborSubtotal: number;

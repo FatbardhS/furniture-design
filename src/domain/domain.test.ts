@@ -319,7 +319,8 @@ describe('room items', () => {
 
     const sel = describePart('x:b:rail-1', cfg, layout)!;
     expect(sel).toMatchObject({ kind: 'extra', extra: { id: 'b' } });
-    expect(sel.partIds).toContain('x:b:mattress');
+    expect(sel).toMatchObject({ piece: 'frame' }); // a rail picks the frame, not the whole bed
+    expect(sel.partIds).not.toContain('x:b:mattress');
     expect(selectionFocus(sel, cfg)).toEqual({ tab: 'room', extraId: 'b' });
   });
 });
@@ -335,5 +336,52 @@ describe('per-door design', () => {
     const lines = computeQuote(bom, pricing).materialLines.filter((l) => l.label.startsWith('Dizajni'));
     expect(lines).toHaveLength(1); // flat costs nothing extra
     expect(lines[0].label).toMatch(/pasqyrë/);
+  });
+});
+
+describe('configurable bed and dresser', () => {
+  it('builds a tall, wide, slatted headboard with channel cushions and prices the upholstery', () => {
+    const cfg = box({
+      extras: [
+        {
+          id: 'b', kind: 'bed', x: 0, z: 0, rotation: 0, mattressWidth: 1600, mattressLength: 2000, headboard: 'panel',
+          headboardHeight: 1400, headboardExtra: 500, headboardDesign: 'slats', cushions: 'channels', fabric: '#4b4d50', base: 'legs',
+        },
+      ],
+    });
+    const layout = buildLayout(cfg);
+    const slats = layout.parts.filter((p) => p.id.startsWith('x:b:slat-'));
+    expect(slats.length).toBeGreaterThan(20); // headboard ≈ 1.65 m + 2 × 0.5 m wide
+    expect(slats[0].size[1]).toBe(1400);
+    const cushions = layout.fixtures.filter((f) => f.kind === 'cushion');
+    expect(cushions.length).toBeGreaterThan(5);
+    expect(cushions[0]).toMatchObject({ color: '#4b4d50' });
+    expect(layout.parts.filter((p) => p.id.startsWith('x:b:leg-'))).toHaveLength(4);
+    expect(layout.upholsteryArea).toBeGreaterThan(1);
+
+    const pricing = defaultPricing();
+    const quote = computeQuote(buildBom(cfg, layout, pricing), pricing);
+    expect(quote.materialLines.find((l) => l.label.startsWith('Tapiceria'))!.amount).toBeCloseTo(layout.upholsteryArea * pricing.upholsteryPerM2, 0);
+
+    // Clicking a slat edits the headboard only.
+    const sel = describePart('x:b:slat-3', cfg, layout)!;
+    expect(sel).toMatchObject({ kind: 'extra', piece: 'head' });
+    expect(sel.partIds.every((id) => /slat|hb-|cushion/.test(id))).toBe(true);
+  });
+
+  it('keeps older beds working from the headboard preset alone', () => {
+    const cfg = box({ extras: [{ id: 'o', kind: 'bed', x: 0, z: 0, rotation: 0, mattressWidth: 900, mattressLength: 2000, headboard: 'tall' }] });
+    const head = buildLayout(cfg).parts.find((p) => p.id === 'x:o:head')!;
+    expect(head.size[1]).toBe(1250);
+  });
+
+  it('gives dresser fronts their own design and puts the dresser on legs', () => {
+    const cfg = box({
+      extras: [{ id: 'k', kind: 'dresser', x: 0, z: 0, rotation: 0, width: 1000, height: 800, depth: 450, rows: 3, perRow: 1, mirror: 'none', mirrorWidth: 0, mirrorHeight: 0, frontStyle: 'fluted', base: 'legs' }],
+    });
+    const layout = buildLayout(cfg);
+    expect(layout.parts.filter((p) => p.category === 'drawerFront').every((p) => p.style === 'fluted')).toBe(true);
+    expect(layout.parts.filter((p) => p.id.startsWith('x:k:leg-'))).toHaveLength(4);
+    expect(layout.parts.find((p) => p.id === 'x:k:plinth')).toBeUndefined();
   });
 });

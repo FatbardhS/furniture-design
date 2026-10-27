@@ -79,6 +79,7 @@ export function PricesPanel({ c }: { c: Configurator }) {
         <PriceRow label="Shufër varëse (për m)" value={p.hangingRodPerM} unit={cur} onChange={(hangingRodPerM) => patchPricing({ hangingRodPerM })} />
         <PriceRow label="Mbajtëse shufre" value={p.rodMount} unit={cur} onChange={(rodMount) => patchPricing({ rodMount })} />
         <PriceRow label="Kunj mbajtës rafti" value={p.shelfSupport} unit={cur} onChange={(shelfSupport) => patchPricing({ shelfSupport })} />
+        <PriceRow label="Tapiceri e kokës së shtratit (për m²)" value={p.upholsteryPerM2 ?? 45} unit={cur} onChange={(upholsteryPerM2) => patchPricing({ upholsteryPerM2 })} />
         <PriceRow label="Shinë rrëshqitëse (për m)" value={p.slidingTrackPerM} unit={cur} onChange={(slidingTrackPerM) => patchPricing({ slidingTrackPerM })} />
         <PriceRow label="Set rrotash (për derë)" value={p.slidingRollerSet} unit={cur} onChange={(slidingRollerSet) => patchPricing({ slidingRollerSet })} />
       </Section>
