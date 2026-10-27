@@ -1,15 +1,31 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { materialById } from '../domain/catalog';
+import { frontStyleOf } from '../domain/layout';
 import { fmtLen } from '../domain/units';
-import type { Axis, CabinetConfig, Finish, HandleFinish, Layout, Motion, Part, Unit, Vec3, FrontStyle, HandleType } from '../domain/types';
+import type { Axis, CabinetConfig, Finish, Fixture, HandleFinish, Layout, MirrorShape, Motion, Part, Unit, Vec3, FrontStyle, HandleType } from '../domain/types';
 import { WOOD_TILE, woodTextures } from './textures';
 
 const MM = 0.001;
-const DOOR_SWING = THREE.MathUtils.degToRad(100);
 const v3 = (p: Vec3) => new THREE.Vector3(p[0] * MM, p[1] * MM, p[2] * MM);
+/** Direction from the scene towards the key light (front-right, high enough to keep shadows short). */
+const LIGHT_DIR = new THREE.Vector3(2.5, 5, 3.5).normalize();
+/** A hinged door counts as out of the way of a drawer once it is this far open. */
+const DOOR_CLEAR_T = 0.85;
+
+/** Front rectangle in its group's frame (mm), for working out which door covers which drawer. */
+interface FrontRect {
+  group: string;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0);
 
 export interface ViewState {
   doorsOpen: boolean;
@@ -68,7 +84,17 @@ export class CabinetRenderer {
   private resizeObserver: ResizeObserver;
   private framedOnce = false;
   private lastSize: Vec3 = [1, 1, 1];
+  private lastCenter = new THREE.Vector3();
   private keyLight: THREE.DirectionalLight;
+  /** Placement groups (corner wing, room items) by name. */
+  private placements = new Map<string, THREE.Group>();
+  /** Fixed corner fillers; hidden together with the doors. */
+  private fillers: THREE.Object3D[] = [];
+  /** Door / filler fronts in front of each drawer: the drawer waits until they are out of the way. */
+  private drawerBlockers = new Map<string, { doors: string[]; fixed: boolean; rect: FrontRect }>();
+  /** Drawers behind each door, so opening a drawer swings its door open first. */
+  private doorDrawers = new Map<string, string[]>();
+  private doorRects = new Map<string, FrontRect>();
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -93,7 +119,9 @@ export class CabinetRenderer {
     this.keyLight = new THREE.DirectionalLight('#fff6ea', 1.6);
     this.keyLight.position.set(2.5, 4, 3.5);
     this.keyLight.castShadow = true;
-    this.keyLight.shadow.mapSize.set(2048, 2048);
+    // The shadow camera now covers the whole room layout, so it needs a finer map to stay crisp.
+    const shadowRes = Math.min(4096, this.renderer.capabilities.maxTextureSize);
+    this.keyLight.shadow.mapSize.set(shadowRes, shadowRes);
     this.keyLight.shadow.bias = -0.0004;
     this.keyLight.shadow.normalBias = 0.01;
     this.scene.add(this.keyLight, this.keyLight.target);
@@ -143,27 +171,46 @@ export class CabinetRenderer {
     this.clear();
     this.usedMaterials.clear();
 
+    for (const [name, pl] of Object.entries(layout.groups ?? {})) {
+      const g = new THREE.Group();
+      g.name = name;
+      g.position.copy(v3(pl.position));
+      g.rotation.y = THREE.MathUtils.degToRad(pl.rotation);
+      this.root.add(g);
+      this.placements.set(name, g);
+    }
+    const parentOf = (group?: string) => (group && this.placements.get(group)) || this.root;
+
     for (const part of layout.parts) {
       const finish = part.material === 'front' ? cfg.frontFinish : cfg.carcassFinish;
-      const mesh = this.partMesh(part, finish, cfg.frontStyle);
-      this.attach(mesh, part.position, part.motion, previous);
+      const mesh = this.partMesh(part, finish, frontStyleOf(cfg, part));
+      if (part.category === 'filler') this.fillers.push(mesh);
+      this.attach(mesh, part.position, part.motion, previous, parentOf(part.group));
     }
     for (const fx of layout.fixtures) {
-      const obj = fx.kind === 'rod' ? this.rodMesh(fx.length) : this.handleMesh(cfg.handleType, fx.length, fx.orientation, cfg.handleFinish, fx.side ?? 1);
+      const obj = this.fixtureMesh(fx, cfg);
       const motion = fx.motionKey ? this.motions.get(fx.motionKey)?.motion : undefined;
       obj.userData.partId = fx.id;
-      this.attach(obj, fx.position, motion, previous);
+      this.attach(obj, fx.position, motion, previous, parentOf(fx.group));
     }
+    this.buildCoupling(layout);
     this.applyHighlight();
 
     this.buildDimensions(cfg, unit);
     this.pruneMaterials();
     this.applyVisibility();
-    this.fitShadow(cfg);
 
-    const size: Vec3 = [cfg.width, cfg.height, cfg.depth];
-    const changedALot = size.some((s, i) => Math.abs(s - this.lastSize[i]) / this.lastSize[i] > 0.35);
+    // Frame and light what was actually built: wing and room items included, doors closed.
+    const box = this.closedBounds();
+    const sizeV = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    this.fitShadow(box);
+
+    const size: Vec3 = [sizeV.x / MM, sizeV.y / MM, sizeV.z / MM];
+    const changedALot =
+      size.some((s, i) => Math.abs(s - this.lastSize[i]) / this.lastSize[i] > 0.35) || center.distanceTo(this.lastCenter) > 0.6;
     this.lastSize = size;
+    this.lastCenter = center;
     if (!this.framedOnce || changedALot) {
       this.resetCamera();
       this.framedOnce = true;
@@ -212,7 +259,7 @@ export class CabinetRenderer {
     const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
     const tanH = tanV * this.camera.aspect;
     const dist = Math.max(h / 2 / tanV, (w * 0.95 + d * 0.5) / 2 / tanH) * 1.55 + d / 2;
-    const target = new THREE.Vector3(0, h / 2, 0);
+    const target = new THREE.Vector3(this.lastCenter.x, h / 2, this.lastCenter.z);
     const dir = new THREE.Vector3(0.55, 0.22, 1).normalize();
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(dir, dist);
@@ -241,10 +288,10 @@ export class CabinetRenderer {
 
   // --- scene construction -----------------------------------------------------
 
-  private attach(obj: THREE.Object3D, position: Vec3, motion: Motion | undefined, previous: Map<string, number>) {
+  private attach(obj: THREE.Object3D, position: Vec3, motion: Motion | undefined, previous: Map<string, number>, parent: THREE.Object3D) {
     if (!motion) {
       obj.position.copy(v3(position));
-      this.root.add(obj);
+      parent.add(obj);
       return;
     }
     let mg = this.motions.get(motion.key);
@@ -252,7 +299,7 @@ export class CabinetRenderer {
       const group = new THREE.Group();
       group.name = motion.key;
       if (motion.type === 'hinge') group.position.copy(v3(motion.pivot));
-      this.root.add(group);
+      parent.add(group);
       mg = { group, motion, t: previous.get(motion.key) ?? 0 };
       this.motions.set(motion.key, mg);
     }
@@ -268,10 +315,16 @@ export class CabinetRenderer {
     worldScaleUVs(geo, part.grain, hashOffset(part.id));
     this.geometries.push(geo);
     const mesh = new THREE.Mesh(geo, this.finishMaterial(finish, part.material === 'back'));
-    mesh.castShadow = part.category !== 'back';
+    // The back panel casts too: without it the floor shadow had light leaking through the carcass.
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.category = part.category;
     mesh.userData.partId = part.id;
+    if (part.category === 'filler') {
+      const edges = new THREE.EdgesGeometry(geo);
+      this.geometries.push(edges);
+      mesh.add(new THREE.LineSegments(edges, this.seamMaterial()));
+    }
     if (part.category === 'door' || part.category === 'drawerFront') {
       // The real 3 mm gaps are too thin to read on screen; a faint outline shows where fronts split.
       const edges = new THREE.EdgesGeometry(geo);
@@ -315,6 +368,108 @@ export class CabinetRenderer {
       this.materials.set(key, mat);
     }
     return mat;
+  }
+
+  private fixtureMesh(fx: Fixture, cfg: CabinetConfig): THREE.Object3D {
+    switch (fx.kind) {
+      case 'rod':
+        return this.rodMesh(fx.length);
+      case 'handle':
+        return this.handleMesh(cfg.handleType, fx.length, fx.orientation, cfg.handleFinish, fx.side ?? 1);
+      case 'mirror':
+        return this.mirrorMesh(fx.shape, fx.width, fx.height, cfg.handleFinish);
+      case 'mattress':
+      case 'pillow':
+        return this.softMesh(fx.kind, fx.size);
+    }
+  }
+
+  /** Mirror glass in a thin metal frame (same finish as the handles), facing +z from the wall. */
+  private mirrorMesh(shape: Exclude<MirrorShape, 'none'>, wMm: number, hMm: number, finish: HandleFinish): THREE.Object3D {
+    const group = new THREE.Group();
+    const frameW = 0.015;
+    const w = wMm * MM;
+    const h = hMm * MM;
+    const extrude = (s: THREE.Shape, depth: number) => {
+      const geo = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 48 });
+      this.geometries.push(geo);
+      return geo;
+    };
+    const frame = new THREE.Mesh(extrude(mirrorShape(shape, w + 2 * frameW, h + 2 * frameW), 0.014), this.handleMaterial(finish));
+    frame.position.z = -0.004;
+    frame.castShadow = true;
+    const glass = new THREE.Mesh(extrude(mirrorShape(shape, w, h), 0.003), this.specialMaterial('mirror'));
+    glass.position.z = 0.0105;
+    group.add(frame, glass);
+    return group;
+  }
+
+  /** Mattress and pillows: soft rounded boxes in a pale fabric. */
+  private softMesh(kind: 'mattress' | 'pillow', sizeMm: Vec3): THREE.Object3D {
+    const [sx, sy, sz] = sizeMm.map((s) => s * MM);
+    const radius = kind === 'mattress' ? 0.035 : 0.05;
+    const geo = new RoundedBoxGeometry(sx, sy, sz, 4, Math.min(radius, sy / 2 - 0.001));
+    this.geometries.push(geo);
+    const key = `fabric|${kind}`;
+    this.usedMaterials.add(key);
+    let mat = this.materials.get(key);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({ color: kind === 'mattress' ? '#efede7' : '#faf9f6', roughness: 0.95 });
+      this.materials.set(key, mat);
+    }
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  /** Work out which doors (and corner fillers) stand in front of each drawer. */
+  private buildCoupling(layout: Layout) {
+    const rect = (p: Part): FrontRect => ({
+      group: p.group ?? '',
+      x0: p.position[0] - p.size[0] / 2,
+      x1: p.position[0] + p.size[0] / 2,
+      y0: p.position[1] - p.size[1] / 2,
+      y1: p.position[1] + p.size[1] / 2,
+    });
+    const covers = (a: FrontRect, b: FrontRect) => a.group === b.group && overlap(a.x0, a.x1, b.x0, b.x1) > 5 && overlap(a.y0, a.y1, b.y0, b.y1) > 5;
+    const doors = layout.parts.filter((p) => p.category === 'door' && p.motion);
+    const fillers = layout.parts.filter((p) => p.category === 'filler').map(rect);
+    for (const d of doors) this.doorRects.set(d.motion!.key, rect(d));
+    for (const f of layout.parts) {
+      if (f.category !== 'drawerFront' || !f.motion) continue;
+      const r = rect(f);
+      const blocking = doors.filter((d) => covers(rect(d), r)).map((d) => d.motion!.key);
+      this.drawerBlockers.set(f.motion.key, { doors: blocking, fixed: fillers.some((x) => covers(x, r)), rect: r });
+      for (const k of blocking) this.doorDrawers.set(k, [...(this.doorDrawers.get(k) ?? []), f.motion.key]);
+    }
+  }
+
+  /** Is this door out of the way of this drawer right now? */
+  private doorClear(doorKey: string, drawer: FrontRect): boolean {
+    const mg = this.motions.get(doorKey);
+    if (!mg) return true;
+    if (mg.motion.type === 'hinge') return mg.t > DOOR_CLEAR_T;
+    if (mg.motion.type !== 'slide') return true;
+    const r = this.doorRects.get(doorKey)!;
+    const dx = mg.motion.travel * mg.t;
+    return overlap(r.x0 + dx, r.x1 + dx, drawer.x0, drawer.x1) <= 5;
+  }
+
+  private applyMotion(mg: MotionGroup, t = mg.t) {
+    const m = mg.motion;
+    if (m.type === 'hinge') mg.group.rotation.y = m.dir * t * THREE.MathUtils.degToRad(m.angle ?? 100);
+    else if (m.type === 'slide') mg.group.position.x = m.travel * MM * t;
+    else mg.group.position.z = m.travel * MM * t;
+  }
+
+  /** Bounds of the scene with every door and drawer shut. */
+  private closedBounds(): THREE.Box3 {
+    for (const mg of this.motions.values()) this.applyMotion(mg, 0);
+    const box = new THREE.Box3().setFromObject(this.root);
+    for (const mg of this.motions.values()) this.applyMotion(mg);
+    if (box.isEmpty()) box.set(new THREE.Vector3(-0.5, 0, -0.3), new THREE.Vector3(0.5, 1, 0.3));
+    return box;
   }
 
   private rodMesh(lengthMm: number): THREE.Object3D {
@@ -464,19 +619,29 @@ export class CabinetRenderer {
     const D = cfg.depth * MM;
     const off = 0.09;
     const lineMat = this.lineMaterial();
-    const dim = (a: THREE.Vector3, b: THREE.Vector3, tick: THREE.Vector3, text: string) => {
+    const dim = (a: THREE.Vector3, b: THREE.Vector3, tick: THREE.Vector3, text: string, parent: THREE.Object3D = this.dims) => {
       const pts = [a, b, a.clone().add(tick), a.clone().sub(tick), b.clone().add(tick), b.clone().sub(tick)];
       const geo = new THREE.BufferGeometry().setFromPoints([pts[0], pts[1], pts[2], pts[3], pts[4], pts[5]]);
       geo.setIndex([0, 1, 2, 3, 4, 5]);
       this.geometries.push(geo);
-      this.dims.add(new THREE.LineSegments(geo, lineMat));
+      parent.add(new THREE.LineSegments(geo, lineMat));
       const el = document.createElement('div');
       el.className = 'dim-label';
       el.textContent = text;
       const label = new CSS2DObject(el);
       label.position.copy(a).add(b).multiplyScalar(0.5);
-      this.dims.add(label);
+      parent.add(label);
     };
+    const wing = this.placements.get('wing');
+    if (wing && cfg.corner.side !== 'none') {
+      // Along the wing's top front edge, in the wing's own frame.
+      const g = new THREE.Group();
+      g.position.copy(wing.position);
+      g.rotation.copy(wing.rotation);
+      this.dims.add(g);
+      const L = cfg.corner.length * MM;
+      dim(new THREE.Vector3(-L / 2, H + off, D / 2), new THREE.Vector3(L / 2, H + off, D / 2), new THREE.Vector3(0, 0.025, 0), `Krahu ${fmtLen(cfg.corner.length, unit)}`, g);
+    }
     const t = 0.025;
     dim(new THREE.Vector3(-W / 2, H + off, D / 2), new THREE.Vector3(W / 2, H + off, D / 2), new THREE.Vector3(0, t, 0), `Gjerësia ${fmtLen(cfg.width, unit)}`);
     dim(new THREE.Vector3(-W / 2 - off, 0, D / 2), new THREE.Vector3(-W / 2 - off, H, D / 2), new THREE.Vector3(t, 0, 0), `Lartësia ${fmtLen(cfg.height, unit)}`);
@@ -531,15 +696,25 @@ export class CabinetRenderer {
     }
   }
 
-  private fitShadow(cfg: CabinetConfig) {
-    const r = (Math.max(cfg.width, cfg.height, cfg.depth) * MM) / 2 + 0.6;
+  /**
+   * Fit the shadow camera to the scene and the shadow it throws. It used to be a fixed square
+   * around the cabinet, which clipped the long shadow of a tall or wide wardrobe into a hard edge.
+   */
+  private fitShadow(box: THREE.Box3) {
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    // Horizontal reach of the shadow cast by the top of the scene.
+    const reach = (size.y * Math.hypot(LIGHT_DIR.x, LIGHT_DIR.z)) / LIGHT_DIR.y;
+    const r = Math.hypot(size.x, size.y, size.z) / 2 + reach + 0.3;
+    const dist = r + 6;
+    this.keyLight.target.position.copy(center);
+    this.keyLight.position.copy(center).addScaledVector(LIGHT_DIR, dist);
     const cam = this.keyLight.shadow.camera;
     cam.left = cam.bottom = -r;
     cam.right = cam.top = r;
     cam.near = 0.1;
-    cam.far = 20;
+    cam.far = dist + r + 1;
     cam.updateProjectionMatrix();
-    this.keyLight.target.position.set(0, (cfg.height * MM) / 2, 0);
   }
 
   private applyVisibility() {
@@ -547,6 +722,7 @@ export class CabinetRenderer {
     for (const { group, motion } of this.motions.values()) {
       if (motion.type !== 'drawer') group.visible = this.view.showFronts;
     }
+    for (const f of this.fillers) f.visible = this.view.showFronts;
   }
 
   private clear() {
@@ -562,6 +738,11 @@ export class CabinetRenderer {
     this.geometries.forEach((g) => g.dispose());
     this.geometries = [];
     this.motions.clear();
+    this.placements.clear();
+    this.fillers = [];
+    this.drawerBlockers.clear();
+    this.doorDrawers.clear();
+    this.doorRects.clear();
   }
 
   // --- frame loop ---------------------------------------------------------------
@@ -578,14 +759,26 @@ export class CabinetRenderer {
   private loop = () => {
     this.frame = requestAnimationFrame(this.loop);
     const k = Math.min(1, this.clock.getDelta() * 5);
-    for (const mg of this.motions.values()) {
-      const target = mg.motion.type === 'drawer' ? +this.view.drawersOpen : +this.view.doorsOpen;
+    const step = (mg: MotionGroup, target: number) => {
       mg.t += (target - mg.t) * k;
       if (Math.abs(target - mg.t) < 1e-4) mg.t = target;
-      const m = mg.motion;
-      if (m.type === 'hinge') mg.group.rotation.y = m.dir * mg.t * DOOR_SWING;
-      else if (m.type === 'slide') mg.group.position.x = m.travel * MM * mg.t;
-      else mg.group.position.z = m.travel * MM * mg.t;
+      this.applyMotion(mg);
+    };
+    // Drawers can't pass through closed fronts. A door opens when asked, or first thing when a
+    // drawer behind it is opened, and stays open until that drawer is back in.
+    const fronts = this.view.showFronts;
+    for (const mg of this.motions.values()) {
+      if (mg.motion.type === 'drawer') continue;
+      const behind = this.doorDrawers.get(mg.motion.key);
+      const pulled = fronts && !!behind && (this.view.drawersOpen || behind.some((d) => (this.motions.get(d)?.t ?? 0) > 1e-3));
+      step(mg, this.view.doorsOpen || pulled ? 1 : 0);
+    }
+    for (const mg of this.motions.values()) {
+      if (mg.motion.type !== 'drawer') continue;
+      const b = this.drawerBlockers.get(mg.motion.key);
+      const clear = !fronts || !b || (!b.fixed && b.doors.every((d) => this.doorClear(d, b.rect)));
+      // A drawer already on its way out keeps going; one still shut waits for its door.
+      step(mg, this.view.drawersOpen && (clear || mg.t > 0.05) ? 1 : 0);
     }
     if (this.highlighted.size) this.highlightMat.emissiveIntensity = 0.35 + 0.3 * Math.sin(this.clock.elapsedTime * 5);
     this.controls.update();
@@ -622,4 +815,52 @@ function worldScaleUVs(geo: THREE.BoxGeometry, grain: Axis, [ou, ov]: [number, n
     }
   }
   uv.needsUpdate = true;
+}
+
+/** Outline of a mirror, centred on the origin, `w` × `h` metres. Round uses the smaller side. */
+function mirrorShape(shape: Exclude<MirrorShape, 'none'>, w: number, h: number): THREE.Shape {
+  const s = new THREE.Shape();
+  const hw = w / 2;
+  const hh = h / 2;
+  switch (shape) {
+    case 'round':
+      s.absarc(0, 0, Math.min(hw, hh), 0, Math.PI * 2, false);
+      break;
+    case 'oval':
+      s.absellipse(0, 0, hw, hh, 0, Math.PI * 2, false, 0);
+      break;
+    case 'arch': {
+      // Straight sides with a half-circle on top.
+      const r = Math.min(hw, h / 2);
+      s.moveTo(-hw, -hh);
+      s.lineTo(hw, -hh);
+      s.lineTo(hw, hh - r);
+      s.absarc(0, hh - r, r, 0, Math.PI, false);
+      s.lineTo(-hw, -hh);
+      break;
+    }
+    case 'pill': {
+      const r = Math.min(hw, hh);
+      s.moveTo(-hw, -hh + r);
+      s.absarc(0, -hh + r, r, Math.PI, Math.PI * 2, false);
+      s.lineTo(hw, hh - r);
+      s.absarc(0, hh - r, r, 0, Math.PI, false);
+      s.lineTo(-hw, -hh + r);
+      break;
+    }
+    case 'rect': {
+      const r = Math.min(0.02, hw, hh);
+      s.moveTo(-hw + r, -hh);
+      s.lineTo(hw - r, -hh);
+      s.quadraticCurveTo(hw, -hh, hw, -hh + r);
+      s.lineTo(hw, hh - r);
+      s.quadraticCurveTo(hw, hh, hw - r, hh);
+      s.lineTo(-hw + r, hh);
+      s.quadraticCurveTo(-hw, hh, -hw, hh - r);
+      s.lineTo(-hw, -hh + r);
+      s.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+      break;
+    }
+  }
+  return s;
 }

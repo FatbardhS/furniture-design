@@ -1,7 +1,8 @@
 import { MAX_SINGLE_DOOR, STANDARD_SECTION_WIDTHS } from '../domain/catalog';
 import { fitDoorsFor, MIN_REMAINDER_SECTION, newColumn, planSections } from '../domain/interior';
+import { CORNER_CLEARANCE } from '../domain/layout';
 import { fmtLen, toUnit } from '../domain/units';
-import type { ActiveFocus, Construction, SectionFit } from '../domain/types';
+import type { ActiveFocus, Construction, CornerWing, SectionFit } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon } from './icons';
 import { Button, Field, Flag, LengthInput, NumberInput, Section, Segmented, Stat } from './ui';
@@ -18,6 +19,13 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
     patch({ columns: cols.slice(0, n).map(({ width: _w, ...col }) => col) });
   };
   const setFit = (p: Partial<SectionFit>) => patch({ sectionFit: { ...fit, ...p } });
+  const { corner } = config;
+  const { patchCorner } = c;
+  const setWingColumns = (n: number) => {
+    const cols = [...corner.columns];
+    while (cols.length < n) cols.push(newColumn(interior.height, config.thickness));
+    patchCorner({ columns: cols.slice(0, n) });
+  };
 
   const plan = planSections(config.width, fit);
   const widths = interior.columnWidths;
@@ -138,6 +146,46 @@ export function DimensionsPanel({ c, focus }: { c: Configurator; focus: ActiveFo
           <Stat label="Lart. brenda" value={fmtLen(interior.height, unit)} />
           <Stat label="Thell. brenda" value={fmtLen(interior.depth, unit)} />
         </div>
+      </Section>
+
+      <Section title="Dollap këndor (L)">
+        <Flag on={focus?.field === 'corner'} nonce={focus?.nonce} tone={focus?.tone} className="space-y-3">
+          <Field label="Krahu i këndit">
+            <Segmented<CornerWing['side']>
+              value={corner.side}
+              options={[
+                { value: 'none', label: 'Pa kënd' },
+                { value: 'left', label: 'Majtas' },
+                { value: 'right', label: 'Djathtas' },
+              ]}
+              onChange={(side) => patchCorner({ side })}
+            />
+          </Field>
+          {corner.side !== 'none' && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Gjatësia e krahut">
+                  <LengthInput mm={corner.length} unit={unit} min={500} max={4000} onChange={(length) => patchCorner({ length })} />
+                </Field>
+                <Field label="Seksione në krah">
+                  <div className="flex items-center gap-1.5">
+                    <Button onClick={() => setWingColumns(corner.columns.length - 1)} disabled={corner.columns.length <= 1}>
+                      <Icon name="minus" />
+                    </Button>
+                    <div className="flex-1 text-center text-sm font-semibold tabular-nums">{corner.columns.length}</div>
+                    <Button onClick={() => setWingColumns(corner.columns.length + 1)} disabled={corner.columns.length >= 8}>
+                      <Icon name="plus" />
+                    </Button>
+                  </div>
+                </Field>
+              </div>
+              <p className="rounded-md bg-accent-50 px-2.5 py-2 text-xs leading-relaxed text-accent-700">
+                Krahu qëndron përgjatë murit anësor. Pjesa e dollapit kryesor pas krahut ({fmtLen(config.depth + CORNER_CLEARANCE, unit)}) mbulohet me
+                një panel fiks; dyert pranë këndit hapen në drejtim të kundërt që të mos përplasen. Brendësinë e krahut e rregulloni te “Brendësia”.
+              </p>
+            </>
+          )}
+        </Flag>
       </Section>
 
       <Section title="Trashësia e pllakës">

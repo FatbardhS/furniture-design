@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
 import { DEFAULT_DRAWER_HEIGHT } from '../domain/interior';
 import { columnDoors } from '../domain/layout';
+import { ROOM_LABELS } from '../domain/room';
 import type { Selection } from '../domain/selection';
+import type { InteriorItem, RoomItem } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
+import { DoorStylePicker } from './FinishPanel';
 import { Icon, type IconName } from './icons';
 import { Button, Field, LengthInput, Segmented, Slider } from './ui';
 
@@ -14,17 +17,44 @@ const ITEM_TITLES: Record<string, { label: string; icon: IconName }> = {
 
 /** Small card over the 3D view for adjusting whatever the user clicked. */
 export function SelectionEditor({ c, selection, onClose }: { c: Configurator; selection: Selection; onClose: () => void }) {
-  const { config, unit, layout, patch, updateItem, removeItem, setColumnDoors } = c;
+  const { config, unit, layout, patch, setColumnDoors } = c;
   const Hi = Math.round(layout.interior.height);
+  const wing = selection.kind !== 'extra' && !!selection.wing;
+  const updateItem = (ci: number, id: string, p: Partial<InteriorItem>) => c.updateItem(ci, id, p, wing);
+  const removeItem = (ci: number, id: string) => c.removeItem(ci, id, wing);
 
   let icon: IconName = 'door';
   let title: string;
   let body: ReactNode;
 
-  if (selection.kind === 'item') {
+  if (selection.kind === 'extra') {
+    const { extra } = selection;
+    title = extra.kind === 'dresser' && extra.width <= 600 ? 'Komodinë' : ROOM_LABELS[extra.kind];
+    body = (
+      <>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Majtas/djathtas">
+            <LengthInput mm={extra.x} unit={unit} min={-15000} max={15000} onChange={(x) => c.updateExtra(extra.id, { x })} />
+          </Field>
+          <Field label="Para/prapa">
+            <LengthInput mm={extra.z} unit={unit} min={-15000} max={15000} onChange={(z) => c.updateExtra(extra.id, { z })} />
+          </Field>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <Button onClick={() => c.updateExtra(extra.id, { rotation: (((extra.rotation + 90) % 360) as RoomItem['rotation']) })}>
+            <Icon name="reset" className="h-3.5 w-3.5" /> Rrotullo 90°
+          </Button>
+          <Button variant="danger" onClick={() => c.removeExtra(extra.id)}>
+            <Icon name="trash" className="h-3.5 w-3.5" /> Fshi
+          </Button>
+        </div>
+        <p className="text-[10px] text-stone-400">Më shumë opsione te skeda “Dhoma”.</p>
+      </>
+    );
+  } else if (selection.kind === 'item') {
     const { item, column } = selection;
     icon = ITEM_TITLES[item.type].icon;
-    title = `${ITEM_TITLES[item.type].label} · Seksioni ${column + 1}`;
+    title = `${ITEM_TITLES[item.type].label} · ${wing ? 'Krahu, s' : 'S'}eksioni ${column + 1}`;
     body = (
       <>
         <Slider value={item.y} min={0} max={Hi} step={5} onChange={(y) => updateItem(column, item.id, { y })} />
@@ -48,8 +78,10 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
     );
   } else if (selection.kind === 'door') {
     const ci = selection.column;
-    title = ci != null ? `Derë · Seksioni ${ci + 1}` : 'Derë';
-    if (config.doorLayout === 'perColumn' && ci != null) {
+    title = wing ? 'Derë · Krahu i këndit' : ci != null ? `Derë · Seksioni ${ci + 1}` : 'Derë';
+    if (wing) {
+      body = <p className="text-xs text-stone-500">Dyert e krahut ndahen automatikisht sipas gjatësisë; lloji, doreza dhe materiali janë si te dollapi kryesor.</p>;
+    } else if (config.doorLayout === 'perColumn' && ci != null) {
       const d = columnDoors(config.columns[ci], ci, config.columns.length, layout.interior.columnWidths[ci]);
       body = (
         <>
@@ -105,6 +137,13 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
         </Field>
       );
     }
+  } else if (wing || selection.part.category === 'filler') {
+    title = wing ? 'Krahu i këndit' : selection.part.name;
+    body = (
+      <Field label="Gjatësia e krahut">
+        <LengthInput mm={config.corner.length} unit={unit} min={500} max={4000} onChange={(length) => c.patchCorner({ length })} />
+      </Field>
+    );
   } else {
     const { part } = selection;
     title = part.name;
@@ -131,7 +170,7 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
   }
 
   return (
-    <div className="pointer-events-auto w-72 max-w-[calc(100vw-24px)] space-y-2.5 rounded-xl border border-blue-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+    <div className="pointer-events-auto w-80 max-w-[calc(100vw-24px)] space-y-2.5 rounded-xl border border-blue-200 bg-white/95 p-3 shadow-lg backdrop-blur">
       <div className="flex items-center gap-2">
         <span className="grid h-6 w-6 place-items-center rounded-md bg-blue-100 text-blue-700">
           <Icon name={icon} className="h-3.5 w-3.5" />
@@ -142,6 +181,12 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
         </button>
       </div>
       {body}
+      {selection.kind === 'door' && (
+        <div className="space-y-1 border-t border-stone-100 pt-2">
+          <div className="text-[11px] font-medium text-stone-600">Dizajni i kësaj dere</div>
+          <DoorStylePicker c={c} doorId={selection.part.id} />
+        </div>
+      )}
     </div>
   );
 }

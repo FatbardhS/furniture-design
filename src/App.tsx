@@ -7,6 +7,7 @@ import { Icon } from './components/icons';
 import { InteriorPanel } from './components/InteriorPanel';
 import { PricesPanel } from './components/PricesPanel';
 import { QuotePanel } from './components/QuotePanel';
+import { RoomPanel } from './components/RoomPanel';
 import { SelectionEditor } from './components/SelectionEditor';
 import { Button, Segmented, Tabs } from './components/ui';
 import { Viewport } from './components/Viewport';
@@ -16,7 +17,7 @@ import { useConfigurator } from './state/useConfigurator';
 import type { CabinetRenderer } from './three/CabinetRenderer';
 import type { ActiveFocus, Warning } from './domain/types';
 
-type LeftTab = 'size' | 'interior' | 'doors' | 'finish';
+type LeftTab = 'size' | 'interior' | 'doors' | 'finish' | 'room';
 type RightTab = 'quote' | 'bom' | 'cuts' | 'prices';
 
 export default function App() {
@@ -80,10 +81,10 @@ export default function App() {
         e.preventDefault();
         const step = (e.shiftKey ? 50 : 10) * (e.key === 'ArrowUp' ? 1 : -1);
         const y = Math.min(Math.round(cfg.layout.interior.height), Math.max(0, sel.item.y + step));
-        cfg.updateItem(sel.column, sel.item.id, { y });
+        cfg.updateItem(sel.column, sel.item.id, { y }, sel.wing);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        cfg.removeItem(sel.column, sel.item.id);
+        cfg.removeItem(sel.column, sel.item.id, sel.wing);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -146,10 +147,12 @@ export default function App() {
               { value: 'interior', label: 'Brendësia' },
               { value: 'doors', label: 'Dyert' },
               { value: 'finish', label: 'Materiali' },
+              { value: 'room', label: 'Dhoma' },
             ]}
           />
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {left === 'size' && <DimensionsPanel c={c} focus={focus} />}
+            {left === 'room' && <RoomPanel c={c} focus={focus} />}
             {left === 'interior' && <InteriorPanel c={c} focus={focus} />}
             {left === 'doors' && <DoorsPanel c={c} focus={focus} />}
             {left === 'finish' && <FinishPanel c={c} />}

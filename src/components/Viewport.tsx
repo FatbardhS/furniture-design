@@ -85,7 +85,8 @@ export function Viewport({
           label={hasDoors ? (view.doorsOpen ? 'Mbyll dyert' : 'Hap dyert') : 'Pa dyer'}
           icon={<Icon name="door" />}
           checked={view.doorsOpen}
-          onChange={(v) => hasDoors && set({ doorsOpen: v })}
+          // Closing the doors puts the drawers back first; the doors follow once they're in.
+          onChange={(v) => hasDoors && set(v ? { doorsOpen: true } : { doorsOpen: false, drawersOpen: false })}
         />
         <Toggle
           label={view.drawersOpen ? 'Mbyll sirtarët' : 'Hap sirtarët'}

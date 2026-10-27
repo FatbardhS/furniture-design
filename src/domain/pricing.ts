@@ -41,16 +41,28 @@ export function computeQuote(bom: Bom, pricing: PricingConfig): Quote {
     amount: money(bom.edgeBandingM * pricing.edgeBandingPerM),
   });
 
-  const styleRate = pricing.frontStylePerM2?.[bom.frontStyle] ?? 0;
-  if (styleRate > 0 && bom.styledFrontArea > 0) {
+  // One line per design in use, since single doors can differ (e.g. one mirror door).
+  for (const [style, area] of Object.entries(bom.styledFronts ?? {}) as [keyof typeof FRONT_STYLE_LABELS, number][]) {
+    const styleRate = pricing.frontStylePerM2?.[style] ?? 0;
+    if (styleRate <= 0 || area <= 0) continue;
     materialLines.push({
-      label: `Dizajni i fronteve — ${FRONT_STYLE_LABELS[bom.frontStyle]}`,
-      detail: `${bom.styledFrontArea.toFixed(2)} m² × ${styleRate.toFixed(2)}`,
-      amount: money(bom.styledFrontArea * styleRate),
+      label: `Dizajni i fronteve — ${FRONT_STYLE_LABELS[style]}`,
+      detail: `${area.toFixed(2)} m² × ${styleRate.toFixed(2)}`,
+      amount: money(area * styleRate),
     });
   }
 
-  const materialSubtotal = money(materialLines.reduce((s, l) => s + l.amount, 0));
+  // Room mirrors are priced like mirror door fronts.
+  const mirrorRate = pricing.frontStylePerM2?.mirror ?? 0;
+  if (bom.mirrorArea > 0) {
+    materialLines.push({
+      label: 'Pasqyrat (komodë / mur)',
+      detail: `${bom.mirrorArea.toFixed(2)} m² × ${mirrorRate.toFixed(2)}`,
+      amount: money(bom.mirrorArea * mirrorRate),
+    });
+  }
+
+  const materialSubtotal =money(materialLines.reduce((s, l) => s + l.amount, 0));
   const hardwareSubtotal = money(bom.hardware.reduce((s, h) => s + h.total, 0));
 
   let laborSubtotal: number;

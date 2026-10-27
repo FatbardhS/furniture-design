@@ -1,4 +1,5 @@
 import { HANDLE_FINISH_LABELS, HANDLE_LABELS, HINGE_LABELS, materialById, SHEET, SLIDE_LABELS } from './catalog';
+import { frontStyleOf } from './layout';
 import type { CabinetConfig, Layout, Part, PartMaterial, PricingConfig, FrontStyle } from './types';
 
 /** Extra edge banding per banded edge, for trimming the overhang at both ends. */
@@ -53,8 +54,12 @@ export interface Bom {
   totalBoardArea: number;
   partCount: number;
   frontStyle: FrontStyle;
-  /** Area (m²) of the fronts that get the chosen design: doors, plus drawer fronts for milled designs. */
+  /** Area (m²) of the fronts that get a design: doors, plus drawer fronts for milled designs. */
   styledFrontArea: number;
+  /** The same area split by design, since single doors can have their own (m²). */
+  styledFronts: Partial<Record<FrontStyle, number>>;
+  /** Mirror glass of room items (dresser mirrors, wall mirrors), m². */
+  mirrorArea: number;
 }
 
 const round = (v: number, dp = 3) => Math.round(v * 10 ** dp) / 10 ** dp;
@@ -93,6 +98,18 @@ export function buildCutList(cfg: CabinetConfig, parts: Part[]): CutListRow[] {
   const order: Record<string, number> = {};
   parts.forEach((p, i) => (order[p.name] ??= i));
   return [...rows.values()].sort((a, b) => order[a.name] - order[b.name] || b.length * b.width - a.length * a.width);
+}
+
+/** Front area per design: every door by its own design, drawer fronts only for milled designs. */
+function styledFronts(cfg: CabinetConfig, parts: Part[]) {
+  const byStyle: Partial<Record<FrontStyle, number>> = {};
+  for (const p of parts) {
+    const style = frontStyleOf(cfg, p);
+    const counts = p.category === 'door' || (p.category === 'drawerFront' && (style === 'shaker' || style === 'fluted'));
+    if (counts) byStyle[style] = (byStyle[style] ?? 0) + partArea(p);
+  }
+  for (const k of Object.keys(byStyle) as FrontStyle[]) byStyle[k] = round(byStyle[k]!);
+  return { styledFronts: byStyle, styledFrontArea: round(Object.values(byStyle).reduce((s, v) => s + v, 0)) };
 }
 
 export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingConfig): Bom {
@@ -139,7 +156,8 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
     });
   }
   if (cfg.doorType === 'sliding' && doors) {
-    hw.push({ id: 'track', name: 'Shina për dyer rrëshqitëse (lart + poshtë)', qty: round(cfg.width / 1000, 2), unit: 'm', unitPrice: pricing.slidingTrackPerM });
+    const run = cfg.width + (cfg.corner?.side !== 'none' ? (cfg.corner?.length ?? 0) : 0);
+    hw.push({ id: 'track', name: 'Shina për dyer rrëshqitëse (lart + poshtë)', qty: round(run / 1000, 2), unit: 'm', unitPrice: pricing.slidingTrackPerM });
     hw.push({ id: 'roller', name: 'Set rrotash për derë rrëshqitëse', qty: doors, unit: 'sets', unitPrice: pricing.slidingRollerSet });
   }
   if (drawers) {
@@ -170,10 +188,7 @@ export function buildBom(cfg: CabinetConfig, layout: Layout, pricing: PricingCon
     totalBoardArea: round(boards.reduce((s, b) => s + b.netArea, 0)),
     partCount: parts.length,
     frontStyle: cfg.frontStyle,
-    styledFrontArea: round(
-      parts
-        .filter((p) => p.category === 'door' || (p.category === 'drawerFront' && (cfg.frontStyle === 'shaker' || cfg.frontStyle === 'fluted')))
-        .reduce((s, p) => s + partArea(p), 0),
-    ),
+    ...styledFronts(cfg, parts),
+    mirrorArea: round(layout.mirrorArea ?? 0),
   };
 }

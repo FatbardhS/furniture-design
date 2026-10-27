@@ -64,6 +64,58 @@ export interface Finish {
   gloss: number;
 }
 
+/** A second wardrobe run along the side wall, making an L. */
+export interface CornerWing {
+  side: 'none' | 'left' | 'right';
+  /** Outer length of the wing along the side wall (mm), measured from the main wardrobe's front. */
+  length: number;
+  columns: Column[];
+}
+
+export type MirrorShape = 'none' | 'rect' | 'round' | 'oval' | 'arch' | 'pill';
+export type Headboard = 'none' | 'low' | 'panel' | 'tall';
+
+interface RoomItemBase {
+  id: string;
+  /** Centre of the item's footprint on the floor (mm, same axes as the wardrobe). */
+  x: number;
+  z: number;
+  /** Turn about the vertical axis; 0 = back against the wall behind the wardrobe. */
+  rotation: 0 | 90 | 180 | 270;
+}
+
+/** Chest of drawers / nightstand, optionally with a mirror on the wall above it. */
+export interface DresserItem extends RoomItemBase {
+  kind: 'dresser';
+  width: number;
+  height: number;
+  depth: number;
+  /** Drawer rows and drawers per row. */
+  rows: number;
+  perRow: 1 | 2;
+  mirror: MirrorShape;
+  mirrorWidth: number;
+  mirrorHeight: number;
+}
+
+export interface MirrorItem extends RoomItemBase {
+  kind: 'mirror';
+  shape: Exclude<MirrorShape, 'none'>;
+  width: number;
+  height: number;
+  /** Height of the mirror's bottom edge above the floor. */
+  bottom: number;
+}
+
+export interface BedItem extends RoomItemBase {
+  kind: 'bed';
+  mattressWidth: number;
+  mattressLength: number;
+  headboard: Headboard;
+}
+
+export type RoomItem = DresserItem | MirrorItem | BedItem;
+
 export interface CabinetConfig {
   width: number;
   height: number;
@@ -83,10 +135,15 @@ export interface CabinetConfig {
   handleType: HandleType;
   handleFinish: HandleFinish;
   frontStyle: FrontStyle;
+  /** Per-door design overriding `frontStyle`, keyed by door part id (e.g. one mirror door). */
+  doorStyles?: Record<string, FrontStyle>;
   hingeType: HingeType;
   slideType: SlideType;
   carcassFinish: Finish;
   frontFinish: Finish;
+  corner: CornerWing;
+  /** Other bedroom furniture placed around the wardrobe. */
+  extras: RoomItem[];
 }
 
 export type LaborMode = 'percent' | 'perM2' | 'fixed';
@@ -126,14 +183,20 @@ export type PartCategory =
   | 'drawerFront'
   | 'drawerSide'
   | 'drawerEnd'
-  | 'drawerBottom';
+  | 'drawerBottom'
+  /** Spacer strips that let inner drawers clear open hinged doors. */
+  | 'spacer'
+  /** Fixed front panel covering the blind part of a corner. */
+  | 'filler'
+  /** Boards of free-standing furniture (dresser carcass, bed frame). */
+  | 'panel';
 
 export type PartMaterial = 'carcass' | 'front' | 'back';
 export type Axis = 'x' | 'y' | 'z';
 export type Vec3 = [number, number, number];
 
 export type Motion =
-  | { key: string; type: 'hinge'; pivot: Vec3; dir: 1 | -1 }
+  | { key: string; type: 'hinge'; pivot: Vec3; dir: 1 | -1; /** Opening angle in degrees. */ angle: number }
   | { key: string; type: 'drawer'; travel: number }
   | { key: string; type: 'slide'; travel: number };
 
@@ -157,10 +220,14 @@ export interface Part {
   motion?: Motion;
   /** Section the part belongs to, when it belongs to exactly one (per-section doors). */
   column?: number;
+  /** Placement group (corner wing or a room item); position is relative to it. */
+  group?: string;
 }
 
-export type Fixture =
+export type Fixture = (
   | { kind: 'rod'; id: string; position: Vec3; length: number; motionKey?: string }
+  | { kind: 'mirror'; id: string; position: Vec3; shape: Exclude<MirrorShape, 'none'>; width: number; height: number; motionKey?: string }
+  | { kind: 'mattress' | 'pillow'; id: string; position: Vec3; size: Vec3; motionKey?: string }
   | {
       kind: 'handle';
       id: string;
@@ -170,14 +237,25 @@ export type Fixture =
       /** Which way the front's edge lies from the handle (+x / +y = 1), for edge-mounted profiles. */
       side?: 1 | -1;
       motionKey?: string;
-    };
+    }
+) & { group?: string };
+
+/** Where a placement group sits: offset (mm) and turn about the vertical axis (degrees). */
+export interface Placement {
+  position: Vec3;
+  rotation: number;
+}
 
 /** Where a warning can be fixed: which panel, section, items or field, and which parts to light up in 3D. */
 export interface WarningFocus {
-  tab: 'size' | 'interior' | 'doors';
+  tab: 'size' | 'interior' | 'doors' | 'room';
   column?: number;
+  /** The column / items are in the corner wing rather than the main run. */
+  wing?: boolean;
+  /** Room item the warning or selection is about. */
+  extraId?: string;
   itemIds?: string[];
-  field?: 'depth' | 'height' | 'plinth' | 'sections' | 'doorCount';
+  field?: 'depth' | 'height' | 'plinth' | 'sections' | 'doorCount' | 'corner';
   /** Part / fixture ids to highlight in the 3D view. */
   partIds?: string[];
 }
@@ -192,6 +270,8 @@ export interface Layout {
   parts: Part[];
   fixtures: Fixture[];
   warnings: Warning[];
+  /** Placement of every group referenced by parts / fixtures. */
+  groups: Record<string, Placement>;
   interior: {
     width: number;
     height: number;
@@ -211,6 +291,10 @@ export interface Layout {
     /** Total hinges over all doors (each door's count depends on its own height and weight). */
     hingeTotal: number;
   };
+  /** Interior of the corner wing, when there is one. */
+  wing?: { interior: Layout['interior'] };
+  /** Mirror glass area of the room items, m². */
+  mirrorArea: number;
 }
 
 /** The warning focus the user is currently looking at; `nonce` changes on every click. */

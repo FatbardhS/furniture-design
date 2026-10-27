@@ -211,10 +211,10 @@ describe('3D selection', () => {
       ],
     });
     const layout = buildLayout(cfg);
-    // Any of a drawer's six parts selects the whole drawer.
+    // Any of a drawer's parts (front, box, spacers) selects the whole drawer.
     const drawer = describePart('dside-d1-1', cfg, layout)!;
     expect(drawer).toMatchObject({ kind: 'item', column: 0, item: { id: 'd1' } });
-    expect(drawer.partIds).toHaveLength(6);
+    expect(drawer.partIds).toHaveLength(8);
     expect(selectionFocus(drawer, cfg)).toEqual({ tab: 'interior', column: 0, itemIds: ['d1'] });
     expect(describePart('rod-r1', cfg, layout)).toMatchObject({ kind: 'item', column: 1 });
     // Door 1 is the first of section 2's pair.
@@ -224,5 +224,116 @@ describe('3D selection', () => {
     expect(describePart('plinth', cfg, layout)).toBeNull(); // no plinth on this box
     expect(selectionFocus(describePart('side-1', cfg, layout)!, cfg)).toEqual({ tab: 'size', field: undefined });
     expect(describePart('shelf-gone', cfg, layout)).toBeNull();
+  });
+});
+
+describe('doors, drawers and the corner', () => {
+  it('hinges doors on their front edge and keeps inner drawers clear of open doors', () => {
+    const cfg = box({
+      doorType: 'hinged',
+      doorCount: 2,
+      columns: [{ id: 'c', items: [{ id: 'd', type: 'drawer', y: 0, height: 200 }] }],
+    });
+    const layout = buildLayout(cfg);
+    const doors = layout.parts.filter((p) => p.category === 'door');
+    for (const d of doors) {
+      const m = d.motion!;
+      expect(m.type).toBe('hinge');
+      if (m.type !== 'hinge') continue;
+      expect(m.pivot[2]).toBeCloseTo(d.position[2] + d.size[2] / 2); // front face
+      expect(m.angle).toBe(105); // hinged on an outer side
+    }
+    // An open door stands T in front of the side panel; the drawer front starts beyond it.
+    const front = layout.parts.find((p) => p.category === 'drawerFront')!;
+    const openDoorInner = -500 + 2 + 18;
+    expect(front.position[0] - front.size[0] / 2).toBeGreaterThan(openDoorInner);
+    expect(layout.parts.filter((p) => p.category === 'spacer')).toHaveLength(2);
+  });
+
+  it('stops doors meeting at a divider at 90° so they do not collide', () => {
+    const cfg = box({
+      width: 1200,
+      doorType: 'hinged',
+      doorLayout: 'perColumn',
+      columns: [
+        { id: 'a', items: [], doors: { count: 1, hinge: 'right', split: null } },
+        { id: 'b', items: [], doors: { count: 1, hinge: 'left', split: null } },
+      ],
+    });
+    const angles = buildLayout(cfg).parts.filter((p) => p.category === 'door').map((p) => (p.motion as { angle: number }).angle);
+    expect(angles).toEqual([90, 90]);
+  });
+
+  it('builds an L-shaped wardrobe with a blind corner filler and a rotated wing', () => {
+    const cfg = box({
+      width: 2000,
+      height: 2000,
+      depth: 600,
+      doorType: 'hinged',
+      doorCount: 3,
+      columns: [{ id: 'c', items: [{ id: 'd', type: 'drawer', y: 0, height: 200 }] }],
+      corner: { side: 'left', length: 1200, columns: [{ id: 'w', items: [{ id: 's', type: 'shelf', y: 500 }] }] },
+    });
+    const layout = buildLayout(cfg);
+    expect(layout.groups.wing.rotation).toBe(90);
+    const wingParts = layout.parts.filter((p) => p.group === 'wing');
+    expect(wingParts.length).toBeGreaterThan(5);
+    expect(wingParts.every((p) => p.id.startsWith('w:'))).toBe(true);
+    expect(layout.parts.find((p) => p.id === 'w:shelf-s')).toBeDefined();
+
+    const filler = layout.parts.find((p) => p.category === 'filler' && !p.group)!;
+    expect(filler.size[0]).toBeCloseTo(600 + 60 - 2 - 1.5);
+    // Main doors start after the filler; the one next to the corner hinges away from it.
+    const mainDoors = layout.parts.filter((p) => p.category === 'door' && !p.group).sort((a, b) => a.position[0] - b.position[0]);
+    expect(mainDoors[0].position[0] - mainDoors[0].size[0] / 2).toBeGreaterThan(-1000 + 600);
+    expect((mainDoors[0].motion as { dir: number }).dir).toBe(1); // hinged on its right
+    // A drawer stuck behind the filler is flagged.
+    expect(layout.warnings.some((w) => w.message.includes('mbulesës së këndit'))).toBe(true);
+
+    const sel = describePart('w:shelf-s', cfg, layout)!;
+    expect(sel).toMatchObject({ kind: 'item', wing: true, item: { id: 's' } });
+    expect(selectionFocus(sel, cfg)).toMatchObject({ tab: 'interior', wing: true });
+  });
+});
+
+describe('room items', () => {
+  it('builds a dresser with a shaped mirror, prices the glass and counts its slides', () => {
+    const cfg = box({
+      extras: [
+        { id: 'k', kind: 'dresser', x: 1500, z: 0, rotation: 0, width: 1200, height: 850, depth: 450, rows: 3, perRow: 2, mirror: 'round', mirrorWidth: 800, mirrorHeight: 800 },
+        { id: 'b', kind: 'bed', x: -2000, z: 800, rotation: 90, mattressWidth: 1600, mattressLength: 2000, headboard: 'panel' },
+      ],
+    });
+    const layout = buildLayout(cfg);
+    expect(layout.groups['x:k'].position).toEqual([1500, 0, 0]);
+    expect(layout.parts.filter((p) => p.category === 'drawerFront' && p.group === 'x:k')).toHaveLength(6);
+    expect(layout.fixtures.find((f) => f.kind === 'mirror')).toMatchObject({ shape: 'round', width: 800 });
+    expect(layout.mirrorArea).toBeCloseTo((Math.PI * 0.8 * 0.8) / 4, 3);
+    expect(layout.fixtures.filter((f) => f.kind === 'pillow' && f.group === 'x:b')).toHaveLength(2);
+
+    const pricing = defaultPricing();
+    const bom = buildBom(cfg, layout, pricing);
+    expect(bom.hardware.find((h) => h.id === 'slide')!.qty).toBe(6);
+    const quote = computeQuote(bom, pricing);
+    expect(quote.materialLines.find((l) => l.label.startsWith('Pasqyrat'))!.amount).toBeCloseTo(bom.mirrorArea * pricing.frontStylePerM2.mirror, 2);
+
+    const sel = describePart('x:b:rail-1', cfg, layout)!;
+    expect(sel).toMatchObject({ kind: 'extra', extra: { id: 'b' } });
+    expect(sel.partIds).toContain('x:b:mattress');
+    expect(selectionFocus(sel, cfg)).toEqual({ tab: 'room', extraId: 'b' });
+  });
+});
+
+describe('per-door design', () => {
+  it('prices one mirror door among flat ones separately', () => {
+    const cfg = box({ doorType: 'hinged', doorCount: 3, frontStyle: 'flat', doorStyles: { 'door-1': 'mirror' } });
+    const layout = buildLayout(cfg);
+    const pricing = defaultPricing();
+    const bom = buildBom(cfg, layout, pricing);
+    const door = layout.parts.find((p) => p.id === 'door-1')!;
+    expect(bom.styledFronts.mirror).toBeCloseTo((door.length * door.width) / 1e6, 3);
+    const lines = computeQuote(bom, pricing).materialLines.filter((l) => l.label.startsWith('Dizajni'));
+    expect(lines).toHaveLength(1); // flat costs nothing extra
+    expect(lines[0].label).toMatch(/pasqyrë/);
   });
 });

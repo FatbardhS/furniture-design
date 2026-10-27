@@ -1,4 +1,4 @@
-import type { CabinetConfig, PricingConfig } from './types';
+import type { CabinetConfig, Column, PricingConfig } from './types';
 
 export interface MaterialDef {
   id: string;
@@ -154,7 +154,31 @@ export function defaultConfig(): CabinetConfig {
     slideType: 'softCloseUndermount',
     carcassFinish: { materialId: 'white-matte', color: '#ecebe7', gloss: 0.1 },
     frontFinish: { materialId: 'oak', color: '#c89b6a', gloss: 0.2 },
+    corner: { side: 'none', length: 1200, columns: defaultWingColumns() },
+    extras: [],
   };
+}
+
+/** Starting interior of a corner wing: hanging space and a shelved section. */
+export function defaultWingColumns(): Column[] {
+  return [
+    {
+      id: uid('col'),
+      items: [
+        { id: uid('it'), type: 'shelf', y: 1700 },
+        { id: uid('it'), type: 'rod', y: 1640 },
+      ],
+    },
+    {
+      id: uid('col'),
+      items: [
+        { id: uid('it'), type: 'shelf', y: 400 },
+        { id: uid('it'), type: 'shelf', y: 800 },
+        { id: uid('it'), type: 'shelf', y: 1200 },
+        { id: uid('it'), type: 'shelf', y: 1700 },
+      ],
+    },
+  ];
 }
 
 /**

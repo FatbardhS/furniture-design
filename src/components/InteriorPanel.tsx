@@ -5,7 +5,7 @@ import { fmtLen } from '../domain/units';
 import type { ActiveFocus, Column, InteriorItem, ItemType } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon, type IconName } from './icons';
-import { Button, Field, Flag, LengthInput, Section, Slider } from './ui';
+import { Button, Field, Flag, LengthInput, Section, Segmented, Slider } from './ui';
 
 const ITEM_META: Record<ItemType, { label: string; icon: IconName }> = {
   shelf: { label: 'Raft', icon: 'shelf' },
@@ -15,30 +15,37 @@ const ITEM_META: Record<ItemType, { label: string; icon: IconName }> = {
 
 export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
   const { config, patch, unit, layout } = c;
+  const [onWing, setOnWing] = useState(false);
+  const hasWing = config.corner.side !== 'none';
+  const wing = onWing && hasWing;
+  const columns = wing ? config.corner.columns : config.columns;
+  const setColumns = (cols: Column[]) => (wing ? c.patchCorner({ columns: cols }) : patch({ columns: cols }));
   const [active, setActive] = useState(0);
   const [notice, setNotice] = useState('');
-  const ci = Math.min(active, config.columns.length - 1);
+  const ci = Math.min(active, columns.length - 1);
 
   // A clicked warning opens the section it is about.
   useEffect(() => {
-    if (focus?.tab === 'interior' && focus.column != null) setActive(focus.column);
+    if (focus?.tab !== 'interior') return;
+    setOnWing(!!focus.wing);
+    if (focus.column != null) setActive(focus.column);
   }, [focus?.nonce, focus?.tab, focus?.column]);
-  const column = config.columns[ci];
+  const column = columns[ci];
   const Hi = layout.interior.height;
   const T = config.thickness;
 
-  const setColumnAt = (index: number, col: Column) => patch({ columns: config.columns.map((c, i) => (i === index ? col : c)) });
+  const setColumnAt = (index: number, col: Column) => setColumns(columns.map((c, i) => (i === index ? col : c)));
   const setColumn = (col: Column) => setColumnAt(ci, col);
 
   const addShelf = (index: number) => {
-    const col = config.columns[index];
+    const col = columns[index];
     const shelf = placeNewItem(col, 'shelf', Hi, T);
     setNotice(shelf ? '' : `Nuk ka hapësirë për raft tjetër në seksionin ${index + 1}.`);
     if (shelf) setColumnAt(index, { ...col, items: [...col.items, shelf] });
   };
   /** Removes the most recently added shelf, so + then − is a clean undo. */
   const removeShelf = (index: number) => {
-    const col = config.columns[index];
+    const col = columns[index];
     const last = col.items.findLastIndex((it) => it.type === 'shelf');
     if (last >= 0) setColumnAt(index, { ...col, items: col.items.filter((_, i) => i !== last) });
   };
@@ -56,16 +63,27 @@ export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocu
   };
 
   const copyToAll = () =>
-    patch({
-      columns: config.columns.map((c, i) =>
-        i === ci ? c : { ...c, items: column.items.map((it) => ({ ...it, id: uid('it') })) },
-      ),
-    });
+    setColumns(columns.map((c, i) => (i === ci ? c : { ...c, items: column.items.map((it) => ({ ...it, id: uid('it') })) })));
 
   return (
     <>
+      {hasWing && (
+        <Section title="Pjesa">
+          <Segmented<'main' | 'wing'>
+            value={wing ? 'wing' : 'main'}
+            options={[
+              { value: 'main', label: 'Dollapi kryesor' },
+              { value: 'wing', label: 'Krahu i këndit' },
+            ]}
+            onChange={(v) => {
+              setOnWing(v === 'wing');
+              setActive(0);
+            }}
+          />
+        </Section>
+      )}
       <Section title="Raftet për seksion">
-        {config.columns.map((col, i) => {
+        {columns.map((col, i) => {
           const count = col.items.filter((it) => it.type === 'shelf').length;
           return (
             <div key={col.id} className="flex items-center gap-2">
@@ -90,7 +108,7 @@ export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocu
 
       <Section title="Seksioni">
         <div className="flex flex-wrap gap-1.5">
-          {config.columns.map((col, i) => (
+          {columns.map((col, i) => (
             <button
               key={col.id}
               onClick={() => setActive(i)}
@@ -115,7 +133,7 @@ export function InteriorPanel({ c, focus }: { c: Configurator; focus: ActiveFocu
             <Button variant="ghost" className="justify-start" onClick={() => setColumn(distributeShelves(column, Hi, T))}>
               <Icon name="spread" className="h-3.5 w-3.5" /> Shpërndaj raftet njëtrajtësisht
             </Button>
-            {config.columns.length > 1 && (
+            {columns.length > 1 && (
               <Button variant="ghost" className="justify-start" onClick={copyToAll}>
                 <Icon name="copy" className="h-3.5 w-3.5" /> Kopjo në të gjitha seksionet
               </Button>

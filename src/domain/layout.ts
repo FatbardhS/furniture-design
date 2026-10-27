@@ -1,7 +1,8 @@
 import { materialById, SHEET, SLIDE_LENGTHS } from './catalog';
 import { DEFAULT_DRAWER_HEIGHT, itemInterval, sortItems } from './interior';
+import { buildRoomItems } from './room';
 import { fmtLen } from './units';
-import type { CabinetConfig, Column, ColumnDoors, Fixture, HandleType, InteriorItem, Layout, Part, Warning } from './types';
+import type { CabinetConfig, Column, ColumnDoors, Fixture, FrontStyle, HandleType, InteriorItem, Layout, Motion, Part, Placement, SlideType, Warning } from './types';
 
 /** Gap between adjacent doors and around overlay doors. */
 export const DOOR_GAP = 3;
@@ -13,6 +14,18 @@ export const PLINTH_RECESS = 40;
 export const SLIDING_OVERLAP = 30;
 /** Inner drawers behind doors are set back so their handles clear the closed doors. */
 export const INNER_DRAWER_SETBACK = 30;
+/**
+ * Behind hinged doors, inner drawers run on spacer strips (one board thick) so an open door,
+ * which stands in front of the side panel, doesn't catch the drawer front.
+ */
+export const DRAWER_SPACER = 18;
+/** Doors next to an outer side open this far (degrees); doors meeting a neighbour or a corner stop at 90°. */
+export const OUTER_DOOR_ANGLE = 105;
+export const INNER_DOOR_ANGLE = 90;
+/** Extra width of the blind corner beyond the wing's depth, so doors and handles on both runs clear. */
+export const CORNER_CLEARANCE = 60;
+/** Ids of the corner wing's parts start with this, and their group is 'wing'. */
+export const WING_PREFIX = 'w:';
 /** Hinge count rules by door height (mm). */
 const HINGE_HEIGHT_RULES: [number, number][] = [
   [900, 2],
@@ -63,8 +76,132 @@ export function sectionWidths(cfg: CabinetConfig): number[] {
 export function itemPartIds(it: InteriorItem): string[] {
   if (it.type === 'shelf') return [`shelf-${it.id}`];
   if (it.type === 'rod') return [`rod-${it.id}`];
-  return [`dfront-${it.id}`, `dside-${it.id}--1`, `dside-${it.id}-1`, `dend-${it.id}--1`, `dend-${it.id}-1`, `dbottom-${it.id}`];
+  return [
+    `dfront-${it.id}`, `dside-${it.id}--1`, `dside-${it.id}-1`, `dend-${it.id}--1`, `dend-${it.id}-1`, `dbottom-${it.id}`,
+    `dspacer-${it.id}--1`, `dspacer-${it.id}-1`,
+  ];
 }
+
+export interface DrawerSpec {
+  /** Id stem: parts become dfront-<id>, dside-<id>-±1, … */
+  id: string;
+  /** Prefix for part ids and the motion key (room items, wing). */
+  prefix?: string;
+  group?: string;
+  frontX: number;
+  frontY: number;
+  frontW: number;
+  frontH: number;
+  /** z of the drawer front's centre. */
+  frontZ: number;
+  boxW: number;
+  boxBottom: number;
+  boxH: number;
+  slideLen: number;
+  T: number;
+  Tb: number;
+  handleType: HandleType;
+}
+
+/** One drawer: front, box (sides, ends, bottom) and handle, all moving together on its slides. */
+export function addDrawer(parts: Part[], fixtures: Fixture[], d: DrawerSpec) {
+  const pre = d.prefix ?? '';
+  const { id, T, Tb, group } = d;
+  const key = `${pre}drawer-${id}`;
+  const motion: Motion = { key, type: 'drawer', travel: d.slideLen * 0.8 };
+  parts.push({
+    id: `${pre}dfront-${id}`,
+    name: 'Balli i sirtarit',
+    category: 'drawerFront',
+    material: 'front',
+    length: d.frontW,
+    width: d.frontH,
+    thickness: T,
+    bandLong: 2,
+    bandShort: 2,
+    position: [d.frontX, d.frontY, d.frontZ],
+    size: [d.frontW, d.frontH, T],
+    grain: 'x',
+    motion,
+    group,
+  });
+  const boxD = d.slideLen;
+  const boxZ = d.frontZ - T / 2 - boxD / 2;
+  for (const s of [-1, 1] as const) {
+    parts.push({
+      id: `${pre}dside-${id}-${s}`,
+      name: 'Anësore sirtari',
+      category: 'drawerSide',
+      material: 'carcass',
+      length: boxD,
+      width: d.boxH,
+      thickness: T,
+      bandLong: 1,
+      bandShort: 0,
+      position: [d.frontX + s * (d.boxW / 2 - T / 2), d.boxBottom + d.boxH / 2, boxZ],
+      size: [T, d.boxH, boxD],
+      grain: 'z',
+      motion,
+      group,
+    });
+  }
+  for (const e of [-1, 1] as const) {
+    parts.push({
+      id: `${pre}dend-${id}-${e}`,
+      name: 'Para/prapa sirtari',
+      category: 'drawerEnd',
+      material: 'carcass',
+      length: d.boxW - 2 * T,
+      width: d.boxH,
+      thickness: T,
+      bandLong: 1,
+      bandShort: 0,
+      position: [d.frontX, d.boxBottom + d.boxH / 2, boxZ + e * (boxD / 2 - T / 2)],
+      size: [d.boxW - 2 * T, d.boxH, T],
+      grain: 'x',
+      motion,
+      group,
+    });
+  }
+  parts.push({
+    id: `${pre}dbottom-${id}`,
+    name: 'Fundi i sirtarit (HDF)',
+    category: 'drawerBottom',
+    material: 'back',
+    length: d.boxW,
+    width: boxD,
+    thickness: Tb,
+    bandLong: 0,
+    bandShort: 0,
+    position: [d.frontX, d.boxBottom - Tb / 2, boxZ],
+    size: [d.boxW, Tb, boxD],
+    grain: 'x',
+    motion,
+    group,
+  });
+  if (d.handleType !== 'none') {
+    fixtures.push({
+      kind: 'handle',
+      id: `${pre}dhandle-${id}`,
+      // Edge pulls and gola profiles sit on the drawer's top edge; others are centred.
+      position: [d.frontX, onEdge(d.handleType) ? d.frontY + d.frontH / 2 : d.frontY, d.frontZ + T / 2],
+      orientation: 'horizontal',
+      length: handleLength(d.handleType, d.frontW, 0.5),
+      side: 1,
+      motionKey: key,
+      group,
+    });
+  }
+}
+
+/** Longest standard slide that fits in `depth` mm of carcass. */
+export const slideFor = (depth: number) => [...SLIDE_LENGTHS].reverse().find((l) => l <= depth);
+/** Side clearance each slide type needs between drawer box and carcass. */
+export const slideClearance = (t: SlideType) => SLIDE_SIDE_CLEARANCE[t];
+
+/** Design of a front: a door's own override, else the wardrobe-wide design. */
+export const frontStyleOf = (cfg: CabinetConfig, part: Part): FrontStyle =>
+  (part.category === 'door' && cfg.doorStyles?.[part.id]) || cfg.frontStyle;
 
 /** Edge pulls and gola profiles mount on the front's edge rather than inset on its face. */
 const onEdge = (type: HandleType) => type === 'edge' || type === 'gola';
@@ -88,6 +225,18 @@ function handleLength(type: HandleType, run: number, barShare: number): number {
 
 const barLength = (space: number) => [...BAR_LENGTHS].reverse().find((l) => l <= space) ?? BAR_LENGTHS[0];
 
+/** How one straight run of wardrobe meets a corner. */
+interface RunOptions {
+  /** Width (mm) at the left / right end hidden behind the other run: covered by a filler, no doors. */
+  blindLeft?: number;
+  blindRight?: number;
+  /** This end meets a corner: the door there hinges away from it and opens only 90°. */
+  tightLeft?: boolean;
+  tightRight?: boolean;
+}
+
+type RunLayout = Omit<Layout, 'groups' | 'mirrorArea' | 'wing'>;
+
 /**
  * Turn a configuration into physical parts. This is the single source of truth: the 3D renderer
  * draws exactly these parts and the BOM / cut list is computed from them.
@@ -95,7 +244,88 @@ const barLength = (space: number) => [...BAR_LENGTHS].reverse().find((l) => l <=
  * Coordinates (mm): x = 0 at the cabinet centre, y = 0 on the floor, z = -depth/2 at the back.
  */
 export function buildLayout(cfg: CabinetConfig): Layout {
+  const side = cfg.corner?.side ?? 'none';
+  const groups: Record<string, Placement> = {};
+  const blind = cfg.depth + CORNER_CLEARANCE;
+  const main = buildRun(
+    cfg,
+    side === 'left' ? { blindLeft: blind, tightLeft: true } : side === 'right' ? { blindRight: blind, tightRight: true } : {},
+  );
+  const parts = [...main.parts];
+  const fixtures = [...main.fixtures];
+  const warnings = [...main.warnings];
+  const doors = { ...main.doors };
+  let wing: Layout['wing'];
+
+  if (side !== 'none') {
+    const wcfg = wingConfig(cfg);
+    // Left wing: its right end meets the main run; right wing: its left end.
+    const w = buildRun(wcfg, side === 'left' ? { tightRight: true } : { tightLeft: true });
+    const pre = (id: string) => WING_PREFIX + id;
+    groups.wing = {
+      position: [side === 'left' ? -cfg.width / 2 + cfg.depth / 2 : cfg.width / 2 - cfg.depth / 2, 0, cfg.depth / 2 + 2 + wcfg.width / 2],
+      rotation: side === 'left' ? 90 : -90,
+    };
+    const preMotion = (m: Motion | undefined): Motion | undefined => (m ? { ...m, key: pre(m.key) } : undefined);
+    parts.push(...w.parts.map((p) => ({ ...p, id: pre(p.id), motion: preMotion(p.motion), group: 'wing' })));
+    fixtures.push(...w.fixtures.map((f) => ({ ...f, id: pre(f.id), motionKey: f.motionKey && pre(f.motionKey), group: 'wing' })));
+    warnings.push(
+      ...w.warnings.map((x) => ({
+        ...x,
+        message: `Krahu i këndit: ${x.message.charAt(0).toLowerCase()}${x.message.slice(1)}`,
+        focus: x.focus && { ...x.focus, wing: true, partIds: x.focus.partIds?.map(pre) },
+      })),
+    );
+    doors.count += w.doors.count;
+    doors.hingeTotal += w.doors.hingeTotal;
+    if (w.doors.width * w.doors.height > doors.width * doors.height) Object.assign(doors, { width: w.doors.width, height: w.doors.height, weightKg: w.doors.weightKg });
+    wing = { interior: w.interior };
+    if (cfg.width < blind + 300) {
+      warnings.push({
+        level: 'warn',
+        message: `Dollapi kryesor duhet të jetë të paktën ${cm(blind + 300)} i gjerë që këndi të ketë hapësirë për dyer.`,
+        focus: { tab: 'size', field: 'corner' },
+      });
+    }
+  }
+
+  const room = buildRoomItems(cfg);
+  parts.push(...room.parts);
+  fixtures.push(...room.fixtures);
+  warnings.push(...room.warnings);
+  Object.assign(groups, room.groups);
+
+  // Warnings name parts by id; drop ids that weren't built (e.g. drawer spacers without doors).
+  const ids = new Set([...parts.map((p) => p.id), ...fixtures.map((f) => f.id)]);
+  for (const w of warnings) if (w.focus?.partIds) w.focus = { ...w.focus, partIds: w.focus.partIds.filter((id) => ids.has(id)) };
+
+  return { parts, fixtures, warnings, groups, interior: main.interior, doors, wing, mirrorArea: room.mirrorArea };
+}
+
+/**
+ * The corner wing as a wardrobe of its own: same height, depth, boards, doors and fronts as the
+ * main run, its own length and sections. Doors are spread evenly across it.
+ */
+export function wingConfig(cfg: CabinetConfig): CabinetConfig {
+  const length = cfg.corner.length;
+  const doorCount =
+    cfg.doorType === 'sliding' ? Math.min(4, Math.max(2, Math.round(length / 900))) : Math.min(8, Math.max(1, Math.ceil((length - 4) / 600)));
+  return {
+    ...cfg,
+    width: length,
+    columns: cfg.corner.columns.length ? cfg.corner.columns : [{ id: 'wing-empty', items: [] }],
+    sectionFit: { ...cfg.sectionFit, enabled: false },
+    doorLayout: 'even',
+    doorCount,
+    corner: { side: 'none', length: 0, columns: [] },
+    extras: [],
+  };
+}
+
+function buildRun(cfg: CabinetConfig, opts: RunOptions): RunLayout {
   const { width: W, height: H, depth: D, thickness: T, backThickness: Tb } = cfg;
+  const blindL = opts.blindLeft ?? 0;
+  const blindR = opts.blindRight ?? 0;
   const P = Math.max(0, cfg.plinthHeight);
   const parts: Part[] = [];
   const fixtures: Fixture[] = [];
@@ -230,14 +460,22 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     });
   }
 
-  const slideLen = [...SLIDE_LENGTHS].reverse().find((l) => l <= Dc - T - 10 - (hasDoors ? INNER_DRAWER_SETBACK : 0));
+  const slideLen = slideFor(Dc - T - 10 - (hasDoors ? INNER_DRAWER_SETBACK : 0));
   const drawerFrontZ = zFront - T / 2 - (hasDoors ? INNER_DRAWER_SETBACK : 0);
+  /** Does section ci sit behind hinged doors (so its drawers need spacers)? */
+  const behindHinged = (ci: number) =>
+    cfg.doorType === 'hinged' && (cfg.doorLayout !== 'perColumn' || columnDoors(cfg.columns[ci], ci, n, cws[ci]).count > 0);
+  /** x-range of the blind corner, covered by the filler. */
+  const blindRanges: [number, number][] = [];
+  if (blindL > 0) blindRanges.push([-W / 2, -W / 2 + blindL]);
+  if (blindR > 0) blindRanges.push([W / 2 - blindR, W / 2]);
 
   cfg.columns.forEach((col, ci) => {
     const cw = cws[ci];
     const cx = colLeft(ci) + cw / 2;
     const label = `seksionin ${ci + 1}`;
     const sorted = sortItems(col.items);
+    const hiddenDrawers: InteriorItem[] = [];
 
     // Validation: bounds and overlaps.
     sorted.forEach((it, idx) => {
@@ -298,33 +536,49 @@ export function buildLayout(cfg: CabinetConfig): Layout {
           });
           continue;
         }
-        const key = `drawer-${it.id}`;
-        const motion = { key, type: 'drawer' as const, travel: slideLen * 0.8 };
-        const frontW = cw - 4;
+        const spacer = behindHinged(ci) ? DRAWER_SPACER : 0;
+        const frontW = cw - 4 - 2 * spacer;
         const frontH = h - 4;
         const frontY = floorY + it.y + h / 2;
-        parts.push({
-          id: `dfront-${it.id}`,
-          name: 'Balli i sirtarit',
-          category: 'drawerFront',
-          material: 'front',
-          length: frontW,
-          width: frontH,
-          thickness: T,
-          bandLong: 2,
-          bandShort: 2,
-          position: [cx, frontY, drawerFrontZ],
-          size: [frontW, frontH, T],
-          grain: 'x',
-          motion,
-        });
-
-        const clear = SLIDE_SIDE_CLEARANCE[cfg.slideType];
-        const boxW = cw - 2 * clear;
-        const boxD = slideLen;
+        const boxW = cw - 2 * SLIDE_SIDE_CLEARANCE[cfg.slideType] - 2 * spacer;
         const boxH = Math.max(60, h - 50);
         const boxBottom = floorY + it.y + 15;
-        const boxZ = drawerFrontZ - T / 2 - boxD / 2;
+        addDrawer(parts, fixtures, {
+          id: it.id,
+          frontX: cx,
+          frontY,
+          frontW,
+          frontH,
+          frontZ: drawerFrontZ,
+          boxW,
+          boxBottom,
+          boxH,
+          slideLen,
+          T,
+          Tb,
+          handleType: cfg.handleType,
+        });
+        if (spacer) {
+          for (const s of [-1, 1] as const) {
+            parts.push({
+              id: `dspacer-${it.id}-${s}`,
+              name: 'Distancer sirtari',
+              category: 'spacer',
+              material: 'carcass',
+              length: slideLen,
+              width: h - 10,
+              thickness: spacer,
+              bandLong: 1,
+              bandShort: 0,
+              position: [cx + s * (cw / 2 - spacer / 2), frontY, drawerFrontZ - T / 2 - slideLen / 2],
+              size: [spacer, h - 10, slideLen],
+              grain: 'z',
+            });
+          }
+        }
+        const fx0 = cx - frontW / 2;
+        const fx1 = cx + frontW / 2;
+        if (blindRanges.some(([a, b]) => Math.min(b, fx1) - Math.max(a, fx0) > 5)) hiddenDrawers.push(it);
         if (boxH < 80) {
           warnings.push({
             level: 'warn',
@@ -332,90 +586,65 @@ export function buildLayout(cfg: CabinetConfig): Layout {
             focus: { tab: 'interior', column: ci, itemIds: [it.id], partIds: itemPartIds(it) },
           });
         }
-
-        for (const s of [-1, 1] as const) {
-          parts.push({
-            id: `dside-${it.id}-${s}`,
-            name: 'Anësore sirtari',
-            category: 'drawerSide',
-            material: 'carcass',
-            length: boxD,
-            width: boxH,
-            thickness: T,
-            bandLong: 1,
-            bandShort: 0,
-            position: [cx + s * (boxW / 2 - T / 2), boxBottom + boxH / 2, boxZ],
-            size: [T, boxH, boxD],
-            grain: 'z',
-            motion,
-          });
-        }
-        for (const e of [-1, 1] as const) {
-          parts.push({
-            id: `dend-${it.id}-${e}`,
-            name: 'Para/prapa sirtari',
-            category: 'drawerEnd',
-            material: 'carcass',
-            length: boxW - 2 * T,
-            width: boxH,
-            thickness: T,
-            bandLong: 1,
-            bandShort: 0,
-            position: [cx, boxBottom + boxH / 2, boxZ + e * (boxD / 2 - T / 2)],
-            size: [boxW - 2 * T, boxH, T],
-            grain: 'x',
-            motion,
-          });
-        }
-        parts.push({
-          id: `dbottom-${it.id}`,
-          name: 'Fundi i sirtarit (HDF)',
-          category: 'drawerBottom',
-          material: 'back',
-          length: boxW,
-          width: boxD,
-          thickness: Tb,
-          bandLong: 0,
-          bandShort: 0,
-          position: [cx, boxBottom - Tb / 2, boxZ],
-          size: [boxW, Tb, boxD],
-          grain: 'x',
-          motion,
-        });
-
-        if (cfg.handleType !== 'none') {
-          fixtures.push({
-            kind: 'handle',
-            id: `dhandle-${it.id}`,
-            // Edge pulls and gola profiles sit on the drawer's top edge; others are centred.
-            position: [cx, onEdge(cfg.handleType) ? frontY + frontH / 2 : frontY, drawerFrontZ + T / 2],
-            orientation: 'horizontal',
-            length: handleLength(cfg.handleType, frontW, 0.5),
-            side: 1,
-            motionKey: key,
-          });
-        }
       }
+    }
+    if (hiddenDrawers.length) {
+      warnings.push({
+        level: 'warn',
+        message: `${hiddenDrawers.length === 1 ? 'Sirtari' : `${hiddenDrawers.length} sirtarë`} në ${label} ${hiddenDrawers.length === 1 ? 'është' : 'janë'} pas mbulesës së këndit dhe nuk hapen — zhvendosini në një seksion tjetër.`,
+        focus: { tab: 'interior', column: ci, itemIds: hiddenDrawers.map((d) => d.id), partIds: hiddenDrawers.flatMap(itemPartIds) },
+      });
     }
   });
 
   // --- Doors -----------------------------------------------------------------
   let doorInfo = { count: 0, width: 0, height: 0, weightKg: 0, hingeTotal: 0 };
   const density = materialById(cfg.frontFinish.materialId).density;
+  // Doors run between the blind corners (if any); a fixed filler panel covers each blind part.
+  const xL = blindL > 0 ? -W / 2 + blindL + DOOR_GAP / 2 : -W / 2 + 2;
+  const xR = blindR > 0 ? W / 2 - blindR - DOOR_GAP / 2 : W / 2 - 2;
+  if (hasDoors) {
+    for (const [i, [a, b]] of blindRanges.entries()) {
+      const x0 = a === -W / 2 ? a + 2 : a + DOOR_GAP / 2;
+      const x1 = b === W / 2 ? b - 2 : b - DOOR_GAP / 2;
+      const fh = H - P - 4;
+      parts.push({
+        id: `corner-filler-${i}`,
+        name: 'Mbulesë këndi',
+        category: 'filler',
+        material: 'front',
+        length: fh,
+        width: x1 - x0,
+        thickness: T,
+        bandLong: 2,
+        bandShort: 2,
+        position: [(x0 + x1) / 2, P + 2 + fh / 2, cfg.doorType === 'sliding' ? D / 2 - T / 2 : zFront + 2 + T / 2],
+        size: [x1 - x0, fh, T],
+        grain: 'y',
+      });
+    }
+  }
 
   if (cfg.doorType === 'hinged') {
     const z = zFront + 2 + T / 2;
     const doorBottom = P + 2;
     const doorTop = H - 2;
+    /** At a corner the door hinges away from it, so doors on both runs can open at once. */
+    const hingeSide = (x0: number, x1: number, hingeLeft: boolean) =>
+      opts.tightLeft && x0 <= xL + 1 ? false : opts.tightRight && x1 >= xR - 1 ? true : hingeLeft;
 
     /**
      * One overlay door spanning [x0, x1] × [y0, y1]. The handle goes on the free edge: near the
      * bottom of an upper door, near the top of a lower door, or at a comfortable height otherwise.
      */
-    const addDoor = (x0: number, x1: number, y0: number, y1: number, hingeLeft: boolean, handleAt: 'low' | 'mid' | 'high', column?: number) => {
+    const addDoor = (x0: number, x1: number, y0: number, y1: number, hingeWanted: boolean, handleAt: 'low' | 'mid' | 'high', column?: number) => {
       const dw = x1 - x0;
       const dh = y1 - y0;
       if (dw < 50 || dh < 50) return;
+      const hingeLeft = hingeSide(x0, x1, hingeWanted);
+      // A door hinged on an outer side may swing past 90°; one hinged next to a neighbouring door
+      // or a corner stops at 90° so the two don't run into each other.
+      const outer = hingeLeft ? x0 <= -W / 2 + 3 && !opts.tightLeft : x1 >= W / 2 - 3 && !opts.tightRight;
       const x = (x0 + x1) / 2;
       const y = (y0 + y1) / 2;
       const weight = dw * dh * T * 1e-9 * density;
@@ -437,7 +666,9 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         position: [x, y, z],
         size: [dw, dh, T],
         grain: 'y',
-        motion: { key, type: 'hinge', pivot: [hingeLeft ? x0 : x1, 0, z - T / 2], dir: hingeLeft ? -1 : 1 },
+        // Pivot on the front edge: the door's back corner swings inwards, clear of the carcass and of
+        // a neighbouring door hinged on the same divider.
+        motion: { key, type: 'hinge', pivot: [hingeLeft ? x0 : x1, 0, z + T / 2], dir: hingeLeft ? -1 : 1, angle: outer ? OUTER_DOOR_ANGLE : INNER_DOOR_ANGLE },
         column,
       });
       if (cfg.handleType !== 'none') {
@@ -465,8 +696,10 @@ export function buildLayout(cfg: CabinetConfig): Layout {
         const d = columnDoors(col, ci, n, cws[ci]);
         if (!d.count) return;
         // Outer doors cover the side panel fully; doors meeting at a divider each cover half of it.
-        const x0 = ci === 0 ? -W / 2 + 2 : boundary(ci) + DOOR_GAP / 2;
-        const x1 = ci === n - 1 ? W / 2 - 2 : boundary(ci + 1) - DOOR_GAP / 2;
+        const x0 = Math.max(xL, ci === 0 ? -W / 2 + 2 : boundary(ci) + DOOR_GAP / 2);
+        const x1 = Math.min(xR, ci === n - 1 ? W / 2 - 2 : boundary(ci + 1) - DOOR_GAP / 2);
+        // A section entirely behind the corner filler gets no door.
+        if (x1 - x0 < 150) return;
         const rows: [number, number, 'low' | 'mid' | 'high'][] = [];
         const firstDoor = doorInfo.count;
         const badSplit = d.split != null && (d.split < 100 || d.split > Hi - 100);
@@ -496,9 +729,9 @@ export function buildLayout(cfg: CabinetConfig): Layout {
       });
     } else {
       const nd = Math.min(8, Math.max(1, cfg.doorCount));
-      const dw = (W - 4 - DOOR_GAP * (nd - 1)) / nd;
+      const dw = (xR - xL - DOOR_GAP * (nd - 1)) / nd;
       for (let i = 0; i < nd; i++) {
-        const x0 = -W / 2 + 2 + i * (dw + DOOR_GAP);
+        const x0 = xL + i * (dw + DOOR_GAP);
         addDoor(x0, x0 + dw, doorBottom, doorTop, nd === 1 || i < nd / 2, 'mid');
       }
     }
@@ -521,7 +754,10 @@ export function buildLayout(cfg: CabinetConfig): Layout {
   } else if (cfg.doorType === 'sliding') {
     const nd = Math.min(4, Math.max(2, cfg.doorCount));
     const dh = H - P - 4;
-    const dw = (W + (nd - 1) * SLIDING_OVERLAP) / nd;
+    // Sliding doors span the run between the blind corners (the full width without a corner).
+    const sL = blindL > 0 ? xL : -W / 2;
+    const sR = blindR > 0 ? xR : W / 2;
+    const dw = (sR - sL + (nd - 1) * SLIDING_OVERLAP) / nd;
     const weight = (dw * dh * T * 1e-9) * density;
     doorInfo = { count: nd, width: dw, height: dh, weightKg: weight, hingeTotal: 0 };
     const allDoors = Array.from({ length: nd }, (_, i) => `door-${i}`);
@@ -544,7 +780,7 @@ export function buildLayout(cfg: CabinetConfig): Layout {
     for (let i = 0; i < nd; i++) {
       const front = i % 2 === 1;
       const z = front ? D / 2 - T / 2 : D / 2 - T * 1.5 - 8;
-      const x = -W / 2 + dw / 2 + i * (dw - SLIDING_OVERLAP);
+      const x = sL + dw / 2 + i * (dw - SLIDING_OVERLAP);
       const key = `door-${i}`;
       parts.push({
         id: key,
