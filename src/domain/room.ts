@@ -362,6 +362,73 @@ export function roomFootprint(cfg: CabinetConfig, it: RoomItem): [number, number
   return [it.mattressWidth + 10 + 2 * cfg.thickness + 2 * b.headboardExtra, it.mattressLength + 10 + 2 * cfg.thickness];
 }
 
+/** Free space kept between the wardrobe and a room item, so end doors can swing open. */
+const WARDROBE_GAP = 150;
+/** Free space kept between two room items. */
+const ITEM_GAP = 20;
+
+interface Rect {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/** Floor rectangle of a room item, turned by its rotation, grown by `pad` on every side. */
+function itemRect(cfg: CabinetConfig, it: RoomItem, pad = 0): Rect {
+  const [w, d] = roomFootprint(cfg, it);
+  const [hx, hz] = it.rotation % 180 === 0 ? [w / 2, d / 2] : [d / 2, w / 2];
+  return { x0: it.x - hx - pad, x1: it.x + hx + pad, z0: it.z - hz - pad, z1: it.z + hz + pad };
+}
+
+const overlaps = (a: Rect, b: Rect) => a.x0 < b.x1 - 0.5 && b.x0 < a.x1 - 0.5 && a.z0 < b.z1 - 0.5 && b.z0 < a.z1 - 0.5;
+
+/**
+ * Room items moved apart so none stands inside the wardrobe, the corner wing or another item.
+ * Items are settled in list order; one that overlaps slides along its wall (x, or z when turned
+ * sideways) to the nearest free spot. Returns `cfg.extras` itself when nothing had to move.
+ */
+export function separateRoomItems(cfg: CabinetConfig): RoomItem[] {
+  const items = cfg.extras ?? [];
+  const { width: W, depth: D } = cfg;
+  // Fixed obstacles, already grown by the gap an item must keep from them.
+  const taken: Rect[] = [{ x0: -W / 2 - WARDROBE_GAP, x1: W / 2 + WARDROBE_GAP, z0: -D / 2 - WARDROBE_GAP, z1: D / 2 + WARDROBE_GAP }];
+  const side = cfg.corner?.side ?? 'none';
+  if (side !== 'none') {
+    const x0 = side === 'left' ? -W / 2 : W / 2 - D;
+    taken.push({ x0: x0 - WARDROBE_GAP, x1: x0 + D + WARDROBE_GAP, z0: D / 2, z1: D / 2 + 2 + cfg.corner.length + WARDROBE_GAP });
+  }
+
+  let moved = false;
+  const out = items.map((it) => {
+    const r = itemRect(cfg, it);
+    const blocked = (x: number, z: number) => {
+      const s = { x0: r.x0 + x - it.x, x1: r.x1 + x - it.x, z0: r.z0 + z - it.z, z1: r.z1 + z - it.z };
+      return taken.some((t) => overlaps(s, t));
+    };
+    let best = { x: it.x, z: it.z };
+    if (blocked(it.x, it.z)) {
+      // Spots just either side of each obstacle along the item's wall; take the nearest free one.
+      const alongX = it.rotation % 180 === 0;
+      const half = alongX ? (r.x1 - r.x0) / 2 : (r.z1 - r.z0) / 2;
+      const starts = alongX ? taken.flatMap((t) => [t.x0 - half, t.x1 + half]) : taken.flatMap((t) => [t.z0 - half, t.z1 + half]);
+      // Turned items stay in front of the back wall.
+      const minZ = -D / 2 + half;
+      const free = starts
+        .filter((c) => alongX || c >= minZ)
+        .map((c) => (alongX ? { x: c, z: it.z } : { x: it.x, z: c }))
+        .filter((p) => !blocked(p.x, p.z))
+        .sort((a, b) => Math.abs(a.x - it.x) + Math.abs(a.z - it.z) - (Math.abs(b.x - it.x) + Math.abs(b.z - it.z)));
+      if (free.length) best = { x: Math.round(free[0].x), z: Math.round(free[0].z) };
+    }
+    const placed = best.x === it.x && best.z === it.z ? it : ({ ...it, ...best } as RoomItem);
+    if (placed !== it) moved = true;
+    taken.push(itemRect(cfg, placed, ITEM_GAP));
+    return placed;
+  });
+  return moved ? out : items;
+}
+
 export type RoomPreset = 'dresser' | 'nightstand' | 'mirror' | 'bed';
 
 /**

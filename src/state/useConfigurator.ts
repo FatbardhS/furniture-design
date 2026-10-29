@@ -4,7 +4,7 @@ import { defaultConfig, defaultPricing, uid } from '../domain/catalog';
 import { applySectionFit } from '../domain/interior';
 import { buildLayout, columnDoors } from '../domain/layout';
 import { computeQuote } from '../domain/pricing';
-import { newRoomItem, type RoomPreset } from '../domain/room';
+import { newRoomItem, separateRoomItems, type RoomPreset } from '../domain/room';
 import type { CabinetConfig, Column, ColumnDoors, CornerWing, InteriorItem, PricingConfig, RoomItem, Unit } from '../domain/types';
 
 const STORAGE_KEY = 'closet-configurator:v1';
@@ -35,9 +35,17 @@ function load(): Saved | null {
   }
 }
 
+function withRoomSpace(cfg: CabinetConfig): CabinetConfig {
+  const extras = separateRoomItems(cfg);
+  return extras === cfg.extras ? cfg : { ...cfg, extras };
+}
+
 export function useConfigurator() {
   const [initial] = useState(load);
-  const [config, setConfig] = useState<CabinetConfig>(initial?.config ?? defaultConfig);
+  const [config, setRawConfig] = useState<CabinetConfig>(() => withRoomSpace(initial?.config ?? defaultConfig()));
+  // Every change keeps room items clear of the wardrobe and of each other.
+  const setConfig = (u: CabinetConfig | ((c: CabinetConfig) => CabinetConfig)) =>
+    setRawConfig((c) => withRoomSpace(typeof u === 'function' ? u(c) : u));
   const [pricing, setPricing] = useState<PricingConfig>(initial?.pricing ?? defaultPricing);
   const [unit, setUnit] = useState<Unit>(initial?.unit ?? 'cm');
 

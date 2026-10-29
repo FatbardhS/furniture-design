@@ -4,6 +4,7 @@ import { defaultConfig, defaultPricing } from './catalog';
 import { applySectionFit, distributeShelves, placeNewItem, planSections } from './interior';
 import { buildLayout, hingesForDoor } from './layout';
 import { computeQuote } from './pricing';
+import { separateRoomItems } from './room';
 import { describePart, selectionFocus } from './selection';
 import type { CabinetConfig } from './types';
 
@@ -322,6 +323,25 @@ describe('room items', () => {
     expect(sel).toMatchObject({ piece: 'frame' }); // a rail picks the frame, not the whole bed
     expect(sel.partIds).not.toContain('x:b:mattress');
     expect(selectionFocus(sel, cfg)).toEqual({ tab: 'room', extraId: 'b' });
+  });
+
+  it('keeps room items out of the wardrobe and out of each other', () => {
+    const night = { kind: 'dresser', rotation: 0, width: 500, height: 550, depth: 400, rows: 2, perRow: 1, mirror: 'none', mirrorWidth: 500, mirrorHeight: 700 } as const;
+    const cfg = box({
+      extras: [
+        // Half inside the wardrobe (x 500..), then a nightstand dropped right on top of the dresser.
+        { ...night, id: 'a', x: 600, z: -50, width: 1200, depth: 450 },
+        { ...night, id: 'b', x: 1300, z: -50 },
+      ],
+    });
+    const [a, b] = separateRoomItems(cfg);
+    expect(a.x).toBe(500 + 150 + 600); // slid just clear of the wardrobe's end, keeping its gap
+    expect(b.x - 250).toBeGreaterThanOrEqual(a.x + 600 + 20); // pushed past the dresser
+    expect(a.z).toBe(-50);
+
+    // Items already apart are left alone, as the same array.
+    const apart = box({ extras: [{ ...night, id: 'c', x: 2000, z: -50 }] });
+    expect(separateRoomItems(apart)).toBe(apart.extras);
   });
 });
 
