@@ -222,21 +222,33 @@ export function Button({
   );
 }
 
-export function Tabs<T extends string>({ value, tabs, onChange }: { value: T; tabs: { value: T; label: string; badge?: ReactNode }[]; onChange: (v: T) => void }) {
+/** Tabs share the row equally so they always fit the panel; an icon stacks above its label. */
+export function Tabs<T extends string>({
+  value,
+  tabs,
+  onChange,
+}: {
+  value: T;
+  tabs: { value: T; label: string; icon?: ReactNode; badge?: ReactNode }[];
+  onChange: (v: T) => void;
+}) {
   return (
-    <div className="flex border-b border-stone-200 px-2" role="tablist">
+    <div className="flex border-b border-stone-200" role="tablist">
       {tabs.map((t) => (
         <button
           key={t.value}
           role="tab"
           aria-selected={t.value === value}
           onClick={() => onChange(t.value)}
-          className={`relative -mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition ${
-            t.value === value ? 'border-accent-500 text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'
-          }`}
+          className={`relative -mb-px flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 px-1 text-xs font-semibold transition ${
+            t.icon ? 'flex-col gap-0.5 pb-2 pt-2.5' : 'py-2.5'
+          } ${t.value === value ? 'border-accent-500 text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
         >
-          {t.label}
-          {t.badge}
+          {t.icon}
+          <span className="flex items-center gap-1.5">
+            {t.label}
+            {t.badge}
+          </span>
         </button>
       ))}
     </div>

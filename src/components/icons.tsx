@@ -14,6 +14,9 @@ const PATHS = {
   camera: 'M4 7h3l2-3h6l2 3h3v13H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   spread: 'M4 4h16M4 20h16M8 9h8M8 15h8',
+  interior: 'M4 3h16v18H4zM12 3v18M4 10h8M12 14h8',
+  swatch: 'M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.6 0-1.2-1-1.4-1-2.4 0-.8.7-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5zM7.5 11h.01M10 7.5h.01M14.5 7.5h.01',
+  sofa: 'M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4H3zM5 17v2M19 17v2',
 } as const;
 
 export type IconName = keyof typeof PATHS;

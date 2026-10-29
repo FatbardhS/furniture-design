@@ -143,11 +143,11 @@ export default function App() {
             value={left}
             onChange={setLeft}
             tabs={[
-              { value: 'size', label: 'Përmasat' },
-              { value: 'interior', label: 'Brendësia' },
-              { value: 'doors', label: 'Dyert' },
-              { value: 'finish', label: 'Materiali' },
-              { value: 'room', label: 'Dhoma' },
+              { value: 'size', label: 'Përmasat', icon: <Icon name="ruler" /> },
+              { value: 'interior', label: 'Brendësia', icon: <Icon name="interior" /> },
+              { value: 'doors', label: 'Dyert', icon: <Icon name="door" /> },
+              { value: 'finish', label: 'Materiali', icon: <Icon name="swatch" /> },
+              { value: 'room', label: 'Dhoma', icon: <Icon name="sofa" /> },
             ]}
           />
           <div className="flex-1 overflow-y-auto scrollbar-thin">
