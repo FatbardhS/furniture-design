@@ -102,7 +102,7 @@ export function Viewport({
       </div>
 
       <div className="pointer-events-none absolute bottom-3 right-3 hidden text-[11px] text-stone-500 sm:block">
-        Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
+        Kliko për ta vënë në qendër · Klik i dyfishtë për t’u afruar · Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
       </div>
 
       {problems.length > 0 && (

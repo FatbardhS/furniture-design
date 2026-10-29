@@ -75,6 +75,8 @@ export class CabinetRenderer {
   private raycaster = new THREE.Raycaster();
   private events = new AbortController();
   private pointerDown: { x: number; y: number; t: number } | null = null;
+  /** Where the orbit centre and camera are gliding to after a click; null when settled. */
+  private focusGoal: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
   /** Called with the clicked part / fixture id, or null for a click on empty space. */
   onPick: ((partId: string | null) => void) | null = null;
   private geometries: THREE.BufferGeometry[] = [];
@@ -138,8 +140,13 @@ export class CabinetRenderer {
     this.controls.minDistance = 0.4;
     this.controls.maxDistance = 15;
     this.controls.screenSpacePanning = true;
+    // Scroll zooms toward whatever is under the cursor, not the middle of the screen.
+    this.controls.zoomToCursor = true;
+    // Grabbing the view cancels a focus glide still in progress.
+    this.controls.addEventListener('start', () => (this.focusGoal = null));
 
-    // A short click without dragging selects; anything longer is an orbit / pan gesture.
+    // A short click without dragging selects and makes the clicked point the orbit centre;
+    // a double click also moves in closer. Anything longer is an orbit / pan gesture.
     const canvas = this.renderer.domElement;
     const signal = this.events.signal;
     canvas.addEventListener('pointerdown', (e) => (this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() }), { signal });
@@ -150,7 +157,17 @@ export class CabinetRenderer {
         this.pointerDown = null;
         if (!d || e.button !== 0) return;
         if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 500) return;
-        this.onPick?.(this.pick(e));
+        const hit = this.pick(e);
+        if (hit) this.focusOn(hit.point, 1);
+        this.onPick?.(hit?.id ?? null);
+      },
+      { signal },
+    );
+    canvas.addEventListener(
+      'dblclick',
+      (e) => {
+        const hit = this.pick(e);
+        if (hit) this.focusOn(hit.point, 0.5);
       },
       { signal },
     );
@@ -234,8 +251,19 @@ export class CabinetRenderer {
     this.applyHighlight();
   }
 
-  /** Id of the nearest visible part or fixture under the pointer. */
-  private pick(e: PointerEvent): string | null {
+  /**
+   * Glide the orbit centre to `point`, keeping the viewing angle; `zoom` scales the camera
+   * distance (1 keeps it, 0.5 halves it, never closer than the controls allow).
+   */
+  private focusOn(point: THREE.Vector3, zoom: number) {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const dist = THREE.MathUtils.clamp(offset.length() * zoom, this.controls.minDistance, this.controls.maxDistance);
+    offset.setLength(dist);
+    this.focusGoal = { target: point.clone(), position: point.clone().add(offset) };
+  }
+
+  /** Nearest visible part or fixture under the pointer, with the exact point that was hit. */
+  private pick(e: MouseEvent): { id: string; point: THREE.Vector3 } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
@@ -248,7 +276,7 @@ export class CabinetRenderer {
         if (!owner && o.userData.partId !== undefined) owner = o;
       }
       // Raycasting ignores `visible`, so skip hits on hidden doors.
-      if (visible && owner) return owner.userData.partId;
+      if (visible && owner) return { id: owner.userData.partId, point: hit.point.clone() };
     }
     return null;
   }
@@ -261,6 +289,7 @@ export class CabinetRenderer {
     const dist = Math.max(h / 2 / tanV, (w * 0.95 + d * 0.5) / 2 / tanH) * 1.55 + d / 2;
     const target = new THREE.Vector3(this.lastCenter.x, h / 2, this.lastCenter.z);
     const dir = new THREE.Vector3(0.55, 0.22, 1).normalize();
+    this.focusGoal = null;
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(dir, dist);
     this.controls.update();
@@ -786,6 +815,12 @@ export class CabinetRenderer {
       step(mg, this.view.drawersOpen && (clear || mg.t > 0.05) ? 1 : 0);
     }
     if (this.highlighted.size) this.highlightMat.emissiveIntensity = 0.35 + 0.3 * Math.sin(this.clock.elapsedTime * 5);
+    if (this.focusGoal) {
+      const g = this.focusGoal;
+      this.controls.target.lerp(g.target, k);
+      this.camera.position.lerp(g.position, k);
+      if (this.controls.target.distanceTo(g.target) < 1e-4 && this.camera.position.distanceTo(g.position) < 1e-4) this.focusGoal = null;
+    }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
