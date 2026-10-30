@@ -5,6 +5,7 @@ import { applySectionFit, distributeShelves, placeNewItem, planSections } from '
 import { buildLayout, hingesForDoor } from './layout';
 import { computeQuote } from './pricing';
 import { separateRoomItems } from './room';
+import { defaultRoom, newOpening, roomBounds, shellWarnings } from './shell';
 import { describePart, selectionFocus } from './selection';
 import type { CabinetConfig } from './types';
 
@@ -16,6 +17,7 @@ const box = (over: Partial<CabinetConfig> = {}): CabinetConfig => ({
   plinthHeight: 0,
   columns: [{ id: 'c', items: [] }],
   doorType: 'none',
+  room: undefined,
   ...over,
 });
 
@@ -403,5 +405,35 @@ describe('configurable bed and dresser', () => {
     expect(layout.parts.filter((p) => p.category === 'drawerFront').every((p) => p.style === 'fluted')).toBe(true);
     expect(layout.parts.filter((p) => p.id.startsWith('x:k:leg-'))).toHaveLength(4);
     expect(layout.parts.find((p) => p.id === 'x:k:plinth')).toBeUndefined();
+  });
+});
+
+describe('room walls', () => {
+  const night = { kind: 'dresser', rotation: 0, width: 500, height: 550, depth: 400, rows: 2, perRow: 1, mirror: 'none', mirrorWidth: 500, mirrorHeight: 700 } as const;
+  const room = (over = {}) => ({ enabled: true, width: 4000, length: 3000, height: 2600, wardrobeX: 1500, openings: [], ...over });
+
+  it('puts the wardrobe on the back wall and keeps room items inside the walls', () => {
+    const cfg = box({ room: room(), extras: [{ ...night, id: 'a', x: 5000, z: 9000 }] });
+    expect(roomBounds(cfg)).toEqual({ x0: -2000, x1: 2000, z0: -250, z1: 2750 });
+    const [a] = separateRoomItems(cfg);
+    expect([a.x, a.z]).toEqual([2000 - 250, 2750 - 200]); // pushed into the far corner
+  });
+
+  it('warns about openings outside a wall or behind the wardrobe, and places new ones in free space', () => {
+    const cfg = box({
+      room: room({
+        openings: [
+          { id: 'w', kind: 'window', wall: 'back', offset: 2000, width: 1000, height: 1000, sill: 900 },
+          { id: 'd', kind: 'door', wall: 'left', offset: 2900, width: 900, height: 2100, sill: 0 },
+        ],
+      }),
+    });
+    const ids = shellWarnings(cfg).map((w) => w.focus?.openingId);
+    expect(ids).toEqual(['w', 'd']); // covered by the wardrobe; runs past the wall's end
+
+    const next = newOpening(cfg, cfg.room!, 'window', 'back', 'n');
+    // 1,5 m either side of the wardrobe is too little for 1,2 m plus 20 cm clearances: next wall, clear of the door.
+    expect([next.wall, next.offset]).toEqual(['left', 800]);
+    expect(defaultRoom({ width: 1800 }, (p) => p).wardrobeX).toBe(1100);
   });
 });

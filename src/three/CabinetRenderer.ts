@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { materialById } from '../domain/catalog';
 import { frontStyleOf } from '../domain/layout';
+import { fmtM, roomBounds, WALL_THICKNESS, wallFrame, wallLength } from '../domain/shell';
 import { fmtLen } from '../domain/units';
 import type { Axis, CabinetConfig, Finish, Fixture, HandleFinish, Layout, MirrorShape, Motion, Part, Unit, Vec3, FrontStyle, HandleType } from '../domain/types';
 import { WOOD_TILE, woodTextures } from './textures';
@@ -79,6 +80,15 @@ export class CabinetRenderer {
   private focusGoal: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
   /** Called with the clicked part / fixture id, or null for a click on empty space. */
   onPick: ((partId: string | null) => void) | null = null;
+  /** Called when a room item has been dragged to a new floor position (mm). */
+  onMoveExtra: ((id: string, x: number, z: number) => void) | null = null;
+  /** The room item being dragged across the floor. */
+  private drag: { id: string; group: THREE.Group; plane: THREE.Plane; grab: THREE.Vector3; moved: boolean } | null = null;
+  /** Walls, floor, windows and doors of the room. */
+  private shell = new THREE.Group();
+  /** Each wall with a point on its inner face and its inward normal, to hide the ones between camera and room. */
+  private walls: { group: THREE.Group; point: THREE.Vector3; normal: THREE.Vector3 }[] = [];
+  private shadowFloor: THREE.Mesh;
   private geometries: THREE.BufferGeometry[] = [];
   private view: ViewState = { doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true };
   private clock = new THREE.Clock();
@@ -131,7 +141,8 @@ export class CabinetRenderer {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.ShadowMaterial({ opacity: 0.16 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
-    this.scene.add(floor, this.root, this.dims);
+    this.shadowFloor = floor;
+    this.scene.add(floor, this.root, this.dims, this.shell);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
@@ -149,12 +160,39 @@ export class CabinetRenderer {
     // a double click also moves in closer. Anything longer is an orbit / pan gesture.
     const canvas = this.renderer.domElement;
     const signal = this.events.signal;
-    canvas.addEventListener('pointerdown', (e) => (this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() }), { signal });
+    // Capture phase, so a press on a room item turns the orbit controls off before they start.
+    canvas.addEventListener(
+      'pointerdown',
+      (e) => {
+        this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+        if (e.button !== 0) return;
+        const hit = this.pick(e);
+        const id = hit && /^x:([^:]+):/.exec(hit.id)?.[1];
+        const group = id && this.placements.get(`x:${id}`);
+        if (!hit || !id || !group) return;
+        // Drag in the horizontal plane through the grabbed point, keeping the grab offset.
+        const grab = hit.point.clone().sub(group.position).setY(0);
+        this.drag = { id, group, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y), grab, moved: false };
+        this.controls.enabled = false;
+      },
+      { signal, capture: true },
+    );
     canvas.addEventListener(
       'pointerup',
       (e) => {
         const d = this.pointerDown;
         this.pointerDown = null;
+        const drag = this.drag;
+        if (drag) {
+          this.drag = null;
+          this.controls.enabled = true;
+          canvas.style.cursor = '';
+          if (drag.moved) {
+            const p = drag.group.position;
+            this.onMoveExtra?.(drag.id, Math.round(p.x / MM / 10) * 10, Math.round(p.z / MM / 10) * 10);
+            return;
+          }
+        }
         if (!d || e.button !== 0) return;
         if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 500) return;
         const hit = this.pick(e);
@@ -172,8 +210,20 @@ export class CabinetRenderer {
       { signal },
     );
     canvas.addEventListener('pointermove', (e) => {
+      const drag = this.drag;
+      if (drag && e.buttons & 1) {
+        const d = this.pointerDown;
+        if (!drag.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 5) return;
+        drag.moved = true;
+        canvas.style.cursor = 'grabbing';
+        this.setRay(e);
+        const at = this.raycaster.ray.intersectPlane(drag.plane, new THREE.Vector3());
+        if (at) drag.group.position.set(at.x - drag.grab.x, drag.group.position.y, at.z - drag.grab.z);
+        return;
+      }
       if (e.buttons) return;
-      canvas.style.cursor = this.pick(e) ? 'pointer' : '';
+      const hit = this.pick(e);
+      canvas.style.cursor = hit ? (hit.id.startsWith('x:') ? 'grab' : 'pointer') : '';
     }, { signal });
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -213,12 +263,14 @@ export class CabinetRenderer {
     this.buildCoupling(layout);
     this.applyHighlight();
 
+    this.buildShell(cfg);
     this.buildDimensions(cfg, unit);
     this.pruneMaterials();
     this.applyVisibility();
 
-    // Frame and light what was actually built: wing and room items included, doors closed.
+    // Frame and light what was actually built: wing, room items and the room's walls, doors closed.
     const box = this.closedBounds();
+    if (this.walls.length) box.union(new THREE.Box3().setFromObject(this.shell));
     const sizeV = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     this.fitShadow(box);
@@ -263,11 +315,15 @@ export class CabinetRenderer {
   }
 
   /** Nearest visible part or fixture under the pointer, with the exact point that was hit. */
-  private pick(e: MouseEvent): { id: string; point: THREE.Vector3 } | null {
+  private setRay(e: MouseEvent) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
-    for (const hit of this.raycaster.intersectObject(this.root, true)) {
+  }
+
+  private pick(e: MouseEvent): { id: string; point: THREE.Vector3 } | null {
+    this.setRay(e);
+    for(const hit of this.raycaster.intersectObject(this.root, true)) {
       if (!(hit.object instanceof THREE.Mesh)) continue;
       let visible = true;
       let owner: THREE.Object3D | null = null;
@@ -647,6 +703,132 @@ export class CabinetRenderer {
     return mat;
   }
 
+  private roomMaterial(key: string, make: () => THREE.Material) {
+    const k = `room|${key}`;
+    this.usedMaterials.add(k);
+    let mat = this.materials.get(k);
+    if (!mat) {
+      mat = make();
+      this.materials.set(k, mat);
+    }
+    return mat;
+  }
+
+  /** The room: a floor with a 1 m grid, and four walls with their windows and doors cut out. */
+  private buildShell(cfg: CabinetConfig) {
+    const b = roomBounds(cfg);
+    this.shadowFloor.visible = !b;
+    const r = cfg.room;
+    if (!b || !r) return;
+    const T = WALL_THICKNESS * MM;
+    const H = r.height * MM;
+    const wallMat = this.roomMaterial('wall', () => new THREE.MeshStandardMaterial({ color: '#f1eee8', roughness: 0.95, side: THREE.DoubleSide }));
+    const trimMat = this.roomMaterial('trim', () => new THREE.MeshStandardMaterial({ color: '#fbfbfa', roughness: 0.45 }));
+    const leafMat = this.roomMaterial('leaf', () => new THREE.MeshStandardMaterial({ color: '#e4ddd2', roughness: 0.6 }));
+    const floorMat = this.roomMaterial('floor', () => new THREE.MeshStandardMaterial({ color: '#d9c7ac', roughness: 0.85 }));
+    const gridMat = this.roomMaterial('grid', () => new THREE.LineBasicMaterial({ color: '#8c7a60', transparent: true, opacity: 0.3 }));
+    const glassMat = this.specialMaterial('glass');
+
+    const floorGeo = new THREE.PlaneGeometry((b.x1 - b.x0) * MM + 2 * T, (b.z1 - b.z0) * MM + 2 * T);
+    floorGeo.rotateX(-Math.PI / 2);
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.position.set(((b.x0 + b.x1) / 2) * MM, 0, ((b.z0 + b.z1) / 2) * MM);
+    floor.receiveShadow = true;
+    // A line every metre, so the room's size reads at a glance.
+    const pts: THREE.Vector3[] = [];
+    for (let x = b.x0 + 1000; x < b.x1 - 1; x += 1000) pts.push(new THREE.Vector3(x * MM, 0.001, b.z0 * MM), new THREE.Vector3(x * MM, 0.001, b.z1 * MM));
+    for (let z = b.z0 + 1000; z < b.z1 - 1; z += 1000) pts.push(new THREE.Vector3(b.x0 * MM, 0.001, z * MM), new THREE.Vector3(b.x1 * MM, 0.001, z * MM));
+    const gridGeo = new THREE.BufferGeometry().setFromPoints(pts);
+    this.geometries.push(floorGeo, gridGeo);
+    this.shell.add(floor, new THREE.LineSegments(gridGeo, gridMat));
+
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const wall of ['back', 'left', 'right', 'front'] as const) {
+      const f = wallFrame(b, wall);
+      const len = wallLength(r, wall);
+      const L = len * MM;
+      // Each wall is drawn in its own frame: u along it, v up, z towards the room (inner face at z = 0).
+      // u runs along up × normal so the frame stays right-handed; offsets flip where that is against `dir`.
+      const n = new THREE.Vector3(f.normal[0], 0, f.normal[1]);
+      const g = new THREE.Vector3(n.z, 0, -n.x);
+      const same = g.x === f.dir[0] && g.z === f.dir[1];
+      const origin = same ? f.start : [f.start[0] + f.dir[0] * len, f.start[1] + f.dir[1] * len];
+      const group = new THREE.Group();
+      group.position.set(origin[0] * MM, 0, origin[1] * MM);
+      group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(g, up, n));
+      const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+        this.geometries.push(geo);
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, y, z);
+        m.receiveShadow = true;
+        group.add(m);
+        return m;
+      };
+
+      // Back and front walls run past the corners to close them.
+      const ext = wall === 'back' || wall === 'front' ? T : 0;
+      const shape = new THREE.Shape();
+      shape.moveTo(-ext, 0);
+      shape.lineTo(L + ext, 0);
+      shape.lineTo(L + ext, H);
+      shape.lineTo(-ext, H);
+      shape.lineTo(-ext, 0);
+      for (const o of r.openings) {
+        if (o.wall !== wall) continue;
+        const u = (same ? o.offset : len - o.offset) * MM;
+        const w = o.width * MM;
+        const h = o.height * MM;
+        const u0 = Math.max(0.002, u - w / 2);
+        const u1 = Math.min(L - 0.002, u + w / 2);
+        // A hole may not touch the outline, so a door leaves a hairline under it.
+        const v0 = Math.max(0.002, o.sill * MM);
+        const v1 = Math.min(H - 0.002, o.sill * MM + h);
+        if (u1 - u0 < 0.05 || v1 - v0 < 0.05) continue;
+        const hole = new THREE.Path();
+        hole.moveTo(u0, v0);
+        hole.lineTo(u0, v1);
+        hole.lineTo(u1, v1);
+        hole.lineTo(u1, v0);
+        hole.lineTo(u0, v0);
+        shape.holes.push(hole);
+
+        const cw = u1 - u0;
+        const ch = v1 - v0;
+        const cu = (u0 + u1) / 2;
+        const cv = (v0 + v1) / 2;
+        if (o.kind === 'window') {
+          // Frame in the middle of the wall, a glass pane, a mullion on wide windows, and a sill inside.
+          const p = 0.05;
+          const depth = 0.07;
+          const z = -T / 2;
+          for (const s of [-1, 1]) {
+            add(new THREE.BoxGeometry(p, ch, depth), trimMat, cu + s * (cw / 2 - p / 2), cv, z);
+            add(new THREE.BoxGeometry(cw - 2 * p, p, depth), trimMat, cu, cv + s * (ch / 2 - p / 2), z);
+          }
+          if (cw > 1) add(new THREE.BoxGeometry(p * 0.8, ch - 2 * p, depth), trimMat, cu, cv, z);
+          add(new THREE.BoxGeometry(cw - 2 * p, ch - 2 * p, 0.006), glassMat, cu, cv, z);
+          add(new THREE.BoxGeometry(cw + 0.1, 0.025, T / 2 + 0.05), trimMat, cu, v0 - 0.0125, -T / 4 + 0.025);
+        } else {
+          // Casing around the opening on the inside, and a closed leaf with a handle.
+          const c = 0.07;
+          for (const s of [-1, 1]) add(new THREE.BoxGeometry(c, ch + c, 0.016), trimMat, cu + s * (cw / 2 + c / 2), (v0 + v1 + c) / 2, 0.008);
+          add(new THREE.BoxGeometry(cw + 2 * c, c, 0.016), trimMat, cu, v1 + c / 2, 0.008);
+          const leaf = add(new THREE.BoxGeometry(cw - 0.006, ch - 0.006, 0.04), leafMat, cu, cv, -0.025);
+          const edges = new THREE.EdgesGeometry(leaf.geometry);
+          this.geometries.push(edges);
+          leaf.add(new THREE.LineSegments(edges, this.seamMaterial()));
+          const handle = add(new THREE.BoxGeometry(0.12, 0.018, 0.018), this.handleMaterial(cfg.handleFinish), cu + cw / 2 - 0.12, Math.min(1.05, ch * 0.5), 0.012);
+          handle.castShadow = true;
+        }
+      }
+      const wallGeo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false });
+      // Walls only take shadows: cast ones from the front and side walls would darken the whole room.
+      add(wallGeo, wallMat, 0, 0, -T);
+      this.shell.add(group);
+      this.walls.push({ group, point: group.position.clone(), normal: n });
+    }
+  }
+
   private buildDimensions(cfg: CabinetConfig, unit: Unit) {
     const W = cfg.width * MM;
     const H = cfg.height * MM;
@@ -677,6 +859,14 @@ export class CabinetRenderer {
       dim(new THREE.Vector3(-L / 2, H + off, D / 2), new THREE.Vector3(L / 2, H + off, D / 2), new THREE.Vector3(0, 0.025, 0), `Krahu ${fmtLen(cfg.corner.length, unit)}`, g);
     }
     const t = 0.025;
+    const room = roomBounds(cfg);
+    if (room) {
+      // Room size along the floor, just outside the front and right walls.
+      const [x0, x1, z0, z1] = [room.x0, room.x1, room.z0, room.z1].map((v) => v * MM);
+      const o = WALL_THICKNESS * MM + 0.2;
+      dim(new THREE.Vector3(x0, 0.005, z1 + o), new THREE.Vector3(x1, 0.005, z1 + o), new THREE.Vector3(0, 0, t), `Dhoma ${fmtM(room.x1 - room.x0)}`);
+      dim(new THREE.Vector3(x1 + o, 0.005, z0), new THREE.Vector3(x1 + o, 0.005, z1), new THREE.Vector3(t, 0, 0), `Dhoma ${fmtM(room.z1 - room.z0)}`);
+    }
     dim(new THREE.Vector3(-W / 2, H + off, D / 2), new THREE.Vector3(W / 2, H + off, D / 2), new THREE.Vector3(0, t, 0), `Gjerësia ${fmtLen(cfg.width, unit)}`);
     dim(new THREE.Vector3(-W / 2 - off, 0, D / 2), new THREE.Vector3(-W / 2 - off, H, D / 2), new THREE.Vector3(t, 0, 0), `Lartësia ${fmtLen(cfg.height, unit)}`);
     dim(new THREE.Vector3(W / 2 + off, H, -D / 2), new THREE.Vector3(W / 2 + off, H, D / 2), new THREE.Vector3(0, t, 0), `Thellësia ${fmtLen(cfg.depth, unit)}`);
@@ -769,6 +959,8 @@ export class CabinetRenderer {
     };
     removeAll(this.root);
     removeAll(this.dims);
+    removeAll(this.shell);
+    this.walls = [];
     this.geometries.forEach((g) => g.dispose());
     this.geometries = [];
     this.motions.clear();
@@ -822,6 +1014,8 @@ export class CabinetRenderer {
       if (this.controls.target.distanceTo(g.target) < 1e-4 && this.camera.position.distanceTo(g.position) < 1e-4) this.focusGoal = null;
     }
     this.controls.update();
+    // Dollhouse view: walls between the camera and the room are left out.
+    for (const w of this.walls) w.group.visible = this.camera.position.clone().sub(w.point).dot(w.normal) > 0;
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   };

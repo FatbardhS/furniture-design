@@ -5,7 +5,8 @@ import { applySectionFit } from '../domain/interior';
 import { buildLayout, columnDoors } from '../domain/layout';
 import { computeQuote } from '../domain/pricing';
 import { newRoomItem, separateRoomItems, type RoomPreset } from '../domain/room';
-import type { CabinetConfig, Column, ColumnDoors, CornerWing, InteriorItem, PricingConfig, RoomItem, Unit } from '../domain/types';
+import { defaultRoom, newOpening } from '../domain/shell';
+import type { CabinetConfig, Column, ColumnDoors, CornerWing, InteriorItem, Opening, PricingConfig, RoomItem, RoomShell, Unit, WallSide } from '../domain/types';
 
 const STORAGE_KEY = 'closet-configurator:v1';
 
@@ -25,7 +26,7 @@ function load(): Saved | null {
     const saved = JSON.parse(raw) as Saved;
     // Merge over defaults so older saves pick up newly added fields.
     return {
-      config: { ...defaultConfig(), ...saved.config, extras: saved.config.extras ?? [] },
+      config: { ...defaultConfig(), ...saved.config, extras: saved.config.extras ?? [], room: saved.config.room ?? defaultRoom(saved.config, uid) },
       // Prices saved before the Kosovo defaults (v2) are replaced by them.
       pricing: saved.pricingV === 2 ? { ...defaultPricing(), ...saved.pricing } : defaultPricing(),
       unit: saved.unitV === 2 && saved.unit === 'mm' ? 'mm' : 'cm',
@@ -91,7 +92,22 @@ export function useConfigurator() {
   const updateExtra = (id: string, p: Partial<RoomItem>) =>
     setConfig((cfg) => ({ ...cfg, extras: cfg.extras.map((it) => (it.id === id ? ({ ...it, ...p } as RoomItem) : it)) }));
   const removeExtra = (id: string) => setConfig((cfg) => ({ ...cfg, extras: cfg.extras.filter((it) => it.id !== id) }));
-  const setColumnDoors = (ci: number, p: Partial<ColumnDoors>) =>
+  const patchRoom = (p: Partial<RoomShell>) =>
+    setConfig((cfg) => {
+      const prev = cfg.room ?? defaultRoom(cfg, uid);
+      const next = { ...prev, ...p };
+      // A centred wardrobe stays centred when the room gets wider or narrower, and always stays on the wall.
+      const free = Math.max(0, next.width - cfg.width);
+      if ('width' in p && !('wardrobeX' in p) && Math.abs(prev.wardrobeX - (prev.width - cfg.width) / 2) <= 1) next.wardrobeX = Math.round(free / 2);
+      next.wardrobeX = Math.min(next.wardrobeX, free);
+      return { ...cfg, room: next };
+    });
+  const mapOpenings = (f: (os: Opening[], r: RoomShell, cfg: CabinetConfig) => Opening[]) =>
+    setConfig((cfg) => (cfg.room ? { ...cfg, room: { ...cfg.room, openings: f(cfg.room.openings, cfg.room, cfg) } } : cfg));
+  const addOpening = (kind: Opening['kind'], wall: WallSide) => mapOpenings((os, r, cfg) => [...os, newOpening(cfg, r, kind, wall, uid('op'))]);
+  const updateOpening = (id: string, p: Partial<Opening>) => mapOpenings((os) => os.map((o) => (o.id === id ? { ...o, ...p } : o)));
+  const removeOpening = (id: string) => mapOpenings((os) => os.filter((o) => o.id !== id));
+  const setColumnDoors =(ci: number, p: Partial<ColumnDoors>) =>
     mapColumn(ci, (col, cfg) => ({ ...col, doors: { ...columnDoors(col, ci, cfg.columns.length, layout.interior.columnWidths[ci]), ...p } }));
 
   const patchPricing = (p: Partial<PricingConfig>) => setPricing((c) => ({ ...c, ...p }));
@@ -100,7 +116,7 @@ export function useConfigurator() {
     setPricing(defaultPricing());
   };
 
-  return { config, setConfig, patch, updateItem, removeItem, setColumnDoors, patchCorner, addExtra, updateExtra, removeExtra, pricing, patchPricing, unit, setUnit, layout, bom, quote, reset };
+  return { config, setConfig, patch, updateItem, removeItem, setColumnDoors, patchCorner, addExtra, updateExtra, removeExtra, patchRoom, addOpening, updateOpening, removeOpening, pricing, patchPricing, unit, setUnit, layout, bom, quote, reset };
 }
 
 export type Configurator = ReturnType<typeof useConfigurator>;

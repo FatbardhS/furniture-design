@@ -1,3 +1,4 @@
+import { defaultRoom } from './shell';
 import type { CabinetConfig, Column, PricingConfig } from './types';
 
 export interface MaterialDef {
@@ -156,6 +157,7 @@ export function defaultConfig(): CabinetConfig {
     frontFinish: { materialId: 'oak', color: '#c89b6a', gloss: 0.2 },
     corner: { side: 'none', length: 1200, columns: defaultWingColumns() },
     extras: [],
+    room: defaultRoom({ width: 1800 }, uid),
   };
 }
 

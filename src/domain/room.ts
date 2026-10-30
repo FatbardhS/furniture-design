@@ -1,4 +1,5 @@
 import { addDrawer, slideClearance, slideFor } from './layout';
+import { roomBounds, shellWarnings, type Bounds } from './shell';
 import type {
   BedItem,
   CabinetConfig,
@@ -105,7 +106,7 @@ interface Built {
  * x centred, y = 0 on the floor, back against the wall at −z — and placed by its group.
  */
 export function buildRoomItems(cfg: CabinetConfig): Built {
-  const out: Built = { parts: [], fixtures: [], warnings: [], groups: {}, mirrorArea: 0, upholsteryArea: 0 };
+  const out: Built = { parts: [], fixtures: [], warnings: shellWarnings(cfg), groups: {}, mirrorArea: 0, upholsteryArea: 0 };
   for (const item of cfg.extras ?? []) {
     const group = roomGroup(item.id);
     out.groups[group] = { position: [item.x, 0, item.z], rotation: item.rotation };
@@ -399,12 +400,17 @@ export function separateRoomItems(cfg: CabinetConfig): RoomItem[] {
     taken.push({ x0: x0 - WARDROBE_GAP, x1: x0 + D + WARDROBE_GAP, z0: D / 2, z1: D / 2 + 2 + cfg.corner.length + WARDROBE_GAP });
   }
 
+  const walls = roomBounds(cfg);
   let moved = false;
-  const out = items.map((it) => {
+  const out = items.map((orig) => {
+    // Inside the walls first: an item pushed against a wall stops there.
+    const it = walls ? clampInto(itemRect(cfg, orig), orig, walls) : orig;
     const r = itemRect(cfg, it);
+    const inside = (x: number, z: number) =>
+      !walls || (r.x0 + x - it.x >= walls.x0 - 0.5 && r.x1 + x - it.x <= walls.x1 + 0.5 && r.z0 + z - it.z >= walls.z0 - 0.5 && r.z1 + z - it.z <= walls.z1 + 0.5);
     const blocked = (x: number, z: number) => {
       const s = { x0: r.x0 + x - it.x, x1: r.x1 + x - it.x, z0: r.z0 + z - it.z, z1: r.z1 + z - it.z };
-      return taken.some((t) => overlaps(s, t));
+      return !inside(x, z) || taken.some((t) => overlaps(s, t));
     };
     let best = { x: it.x, z: it.z };
     if (blocked(it.x, it.z)) {
@@ -421,15 +427,23 @@ export function separateRoomItems(cfg: CabinetConfig): RoomItem[] {
         .sort((a, b) => Math.abs(a.x - it.x) + Math.abs(a.z - it.z) - (Math.abs(b.x - it.x) + Math.abs(b.z - it.z)));
       if (free.length) best = { x: Math.round(free[0].x), z: Math.round(free[0].z) };
     }
-    const placed = best.x === it.x && best.z === it.z ? it : ({ ...it, ...best } as RoomItem);
-    if (placed !== it) moved = true;
+    const placed = best.x === orig.x && best.z === orig.z ? orig : ({ ...orig, ...best } as RoomItem);
+    if (placed !== orig) moved = true;
     taken.push(itemRect(cfg, placed, ITEM_GAP));
     return placed;
   });
   return moved ? out : items;
 }
 
-export type RoomPreset = 'dresser' | 'nightstand' | 'mirror' | 'bed';
+/** The item moved the least distance that puts its rectangle `r` inside the walls (centred if it can't fit). */
+function clampInto(r: Rect, it: RoomItem, b: Bounds): RoomItem {
+  const fit = (lo: number, hi: number, min: number, max: number) => (hi - lo > max - min ? (min + max) / 2 - (lo + hi) / 2 : lo < min ? min - lo : hi > max ? max - hi : 0);
+  const dx = Math.round(fit(r.x0, r.x1, b.x0, b.x1));
+  const dz = Math.round(fit(r.z0, r.z1, b.z0, b.z1));
+  return dx || dz ? { ...it, x: it.x + dx, z: it.z + dz } : it;
+}
+
+export type RoomPreset ='dresser' | 'nightstand' | 'mirror' | 'bed';
 
 /**
  * A new room item with sensible defaults, lined up against the wardrobe's back wall next to

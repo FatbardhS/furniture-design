@@ -14,6 +14,7 @@ export function Viewport({
   onSelectWarning,
   selectionIds,
   onPick,
+  onMoveExtra,
 }: {
   layout: Layout;
   config: CabinetConfig;
@@ -25,6 +26,8 @@ export function Viewport({
   /** Parts of the thing the user clicked, shown in blue. */
   selectionIds: string[];
   onPick: (partId: string | null) => void;
+  /** A room item was dragged to a new spot on the floor (mm). */
+  onMoveExtra: (id: string, x: number, z: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true });
@@ -54,8 +57,11 @@ export function Viewport({
 
   useEffect(() => {
     const r = rendererRef.current;
-    if (r) r.onPick = onPick;
-  }, [onPick, rendererRef]);
+    if (r) {
+      r.onPick = onPick;
+      r.onMoveExtra = onMoveExtra;
+    }
+  }, [onPick, onMoveExtra, rendererRef]);
 
   const selectionKey = selectionIds.join('|');
   useEffect(() => {
@@ -102,7 +108,7 @@ export function Viewport({
       </div>
 
       <div className="pointer-events-none absolute bottom-3 right-3 hidden text-[11px] text-stone-500 sm:block">
-        Kliko për ta vënë në qendër · Klik i dyfishtë për t’u afruar · Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
+        Tërhiq një mobilje për ta lëvizur · Kliko për ta vënë në qendër · Klik i dyfishtë për t’u afruar · Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
       </div>
 
       {problems.length > 0 && (

@@ -1,9 +1,10 @@
 import { bedSpec, CUSHION_LABELS, FABRICS, HEADBOARD_DESIGN_LABELS, MIRROR_LABELS, PIECE_STYLE_LABELS, ROOM_LABELS, type RoomPreset } from '../domain/room';
+import { fmtM, OPENING_LABELS, wallLength } from '../domain/shell';
 import { fmtLen } from '../domain/units';
-import type { ActiveFocus, BedItem, CushionStyle, DresserItem, HeadboardDesign, MirrorItem, MirrorShape, PieceStyle, RoomItem } from '../domain/types';
+import type { ActiveFocus, BedItem, CushionStyle, DresserItem, HeadboardDesign, MirrorItem, MirrorShape, Opening, PieceStyle, RoomItem, WallSide } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
 import { Icon } from './icons';
-import { Button, Field, Flag, LengthInput, NumberInput, Section, Segmented } from './ui';
+import { Button, Field, Flag, LengthInput, MeterInput, NumberInput, Section, Segmented, Toggle } from './ui';
 
 const PRESETS: { value: RoomPreset; label: string }[] = [
   { value: 'dresser', label: 'Komodë me pasqyrë' },
@@ -40,8 +41,12 @@ export function RoomPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | 
 
   return (
     <>
+      <ShellFields c={c} focus={focus} />
+
       <Section title="Shto mobilje">
-        <p className="text-xs text-stone-500">Plotësoni dhomën e gjumit rreth dollapit. Mobiljet vendosen pranë murit; lëvizini me pozicionin më poshtë.</p>
+        <p className="text-xs text-stone-500">
+          Plotësoni dhomën e gjumit rreth dollapit. Tërhiqni një mobilje në 3D për ta lëvizur nëpër dhomë (R e rrotullon), ose përdorni pozicionin më poshtë.
+        </p>
         <div className="grid grid-cols-2 gap-1.5">
           {PRESETS.map((p) => (
             <Button key={p.value} className="justify-start" onClick={() => addExtra(p.value)}>
@@ -91,6 +96,109 @@ export function RoomPanel({ c, focus }: { c: Configurator; focus: ActiveFocus | 
         </Section>
       ))}
     </>
+  );
+}
+
+const WALLS: WallSide[] = ['back', 'left', 'right', 'front'];
+const WALL_SHORT: Record<WallSide, string> = { back: 'Prapa', left: 'Majtas', right: 'Djathtas', front: 'Para' };
+
+/** The room itself: wall sizes in metres, where the wardrobe stands, and the windows and doors. */
+function ShellFields({ c, focus }: { c: Configurator; focus: ActiveFocus | null }) {
+  const { config, patchRoom, addOpening, updateOpening, removeOpening } = c;
+  const r = config.room;
+  const on = !!r?.enabled;
+  const W = config.width;
+  return (
+    <Section
+      title="Dhoma (muret)"
+      action={<Toggle label={on ? 'Muret: po' : 'Muret: jo'} checked={on} onChange={(enabled) => patchRoom({ enabled })} />}
+    >
+      {!r || !on ? (
+        <p className="text-xs text-stone-500">Ndizni muret për ta parë dollapin dhe mobiljet në dhomën tuaj, me dritare dhe dyer.</p>
+      ) : (
+        <Flag on={focus?.field === 'room' && !focus.openingId} nonce={focus?.nonce} tone={focus?.tone} className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Gjerësia">
+              <MeterInput mm={r.width} min={1000} max={20000} onChange={(width) => patchRoom({ width })} />
+            </Field>
+            <Field label="Gjatësia">
+              <MeterInput mm={r.length} min={1000} max={20000} onChange={(length) => patchRoom({ length })} />
+            </Field>
+            <Field label="Lartësia">
+              <MeterInput mm={r.height} min={2000} max={5000} onChange={(height) => patchRoom({ height })} />
+            </Field>
+          </div>
+          <p className="-mt-1 text-[11px] text-stone-500">
+            Dhoma {fmtM(r.width)} × {fmtM(r.length)} · {String(+((r.width * r.length) / 1e6).toFixed(1)).replace('.', ',')} m²
+          </p>
+          <Field label="Dollapi në murin prapa" hint={`${fmtM(r.wardrobeX)} nga muri majtas`}>
+            <div className="space-y-1.5">
+              <Segmented
+                value={r.wardrobeX === 0 ? 0 : r.wardrobeX === r.width - W ? 2 : r.wardrobeX === Math.round((r.width - W) / 2) ? 1 : -1}
+                options={[
+                  { value: 0, label: 'Majtas' },
+                  { value: 1, label: 'Në mes' },
+                  { value: 2, label: 'Djathtas' },
+                ]}
+                onChange={(v) => patchRoom({ wardrobeX: Math.max(0, v === 0 ? 0 : v === 2 ? r.width - W : Math.round((r.width - W) / 2)) })}
+              />
+              <MeterInput mm={r.wardrobeX} min={0} max={Math.max(0, r.width - W)} onChange={(wardrobeX) => patchRoom({ wardrobeX })} />
+            </div>
+          </Field>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Dritare & dyer</span>
+            <div className="flex gap-1.5">
+              <Button onClick={() => addOpening('window', 'left')}>
+                <Icon name="plus" className="h-3.5 w-3.5" /> Dritare
+              </Button>
+              <Button onClick={() => addOpening('door', 'front')}>
+                <Icon name="plus" className="h-3.5 w-3.5" /> Derë
+              </Button>
+            </div>
+          </div>
+          {r.openings.length === 0 && <p className="text-xs text-stone-500">Pa dritare ose dyer.</p>}
+          {r.openings.map((o) => {
+            const len = wallLength(r, o.wall);
+            const set = (p: Partial<Opening>) => updateOpening(o.id, p);
+            return (
+              <Flag key={o.id} on={focus?.openingId === o.id} nonce={focus?.nonce} tone={focus?.tone} className="space-y-2 rounded-lg border border-stone-200 p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-stone-700">{OPENING_LABELS[o.kind]}</span>
+                  <Button variant="danger" onClick={() => removeOpening(o.id)} title="Hiq">
+                    <Icon name="trash" className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <Field label="Muri">
+                  <Segmented<WallSide>
+                    value={o.wall}
+                    options={WALLS.map((w) => ({ value: w, label: WALL_SHORT[w] }))}
+                    // Keep it on the new wall: centred if it no longer fits where it was.
+                    onChange={(wall) => set({ wall, offset: o.offset + o.width / 2 > wallLength(r, wall) ? Math.round(wallLength(r, wall) / 2) : o.offset })}
+                  />
+                </Field>
+                <Field label="Qendra" hint={o.wall === 'back' || o.wall === 'front' ? 'nga muri majtas' : 'nga muri prapa'}>
+                  <MeterInput mm={o.offset} min={o.width / 2} max={Math.max(o.width / 2, len - o.width / 2)} onChange={(offset) => set({ offset })} />
+                </Field>
+                <div className={`grid gap-2 ${o.kind === 'window' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  <Field label="Gjerësia">
+                    <MeterInput mm={o.width} min={300} max={len} onChange={(width) => set({ width })} />
+                  </Field>
+                  <Field label="Lartësia">
+                    <MeterInput mm={o.height} min={300} max={r.height} onChange={(height) => set({ height })} />
+                  </Field>
+                  {o.kind === 'window' && (
+                    <Field label="Nga dyshemeja">
+                      <MeterInput mm={o.sill} min={0} max={r.height - o.height} onChange={(sill) => set({ sill })} />
+                    </Field>
+                  )}
+                </div>
+              </Flag>
+            );
+          })}
+        </Flag>
+      )}
+    </Section>
   );
 }
 

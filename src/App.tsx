@@ -15,7 +15,7 @@ import { formatMoney } from './domain/pricing';
 import { describePart, selectionFocus } from './domain/selection';
 import { useConfigurator } from './state/useConfigurator';
 import type { CabinetRenderer } from './three/CabinetRenderer';
-import type { ActiveFocus, Warning } from './domain/types';
+import type { ActiveFocus, RoomItem, Warning } from './domain/types';
 
 type LeftTab = 'size' | 'interior' | 'doors' | 'finish' | 'room';
 type RightTab = 'quote' | 'bom' | 'cuts' | 'prices';
@@ -74,6 +74,22 @@ export default function App() {
       if (e.key === 'Escape') {
         setPicked(null);
         setSelected(null);
+        return;
+      }
+      // A room item: arrows move it 10 cm (Shift: 1 cm), R turns it, Delete removes it.
+      if (sel?.kind === 'extra') {
+        const it = sel.extra;
+        const step = e.shiftKey ? 10 : 100;
+        const move: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+        if (move[e.key]) {
+          e.preventDefault();
+          cfg.updateExtra(it.id, { x: it.x + move[e.key][0], z: it.z + move[e.key][1] });
+        } else if (e.key === 'r' || e.key === 'R') {
+          cfg.updateExtra(it.id, { rotation: ((it.rotation + 90) % 360) as RoomItem['rotation'] });
+        } else if (e.key === 'Delete') {
+          e.preventDefault();
+          cfg.removeExtra(it.id);
+        }
         return;
       }
       if (sel?.kind !== 'item') return;
@@ -161,7 +177,7 @@ export default function App() {
 
         <main className="relative order-1 h-[55vh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
           <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} activeMessage={activeWarning?.message} focus={focus} onSelectWarning={selectWarning}
-            selectionIds={selection?.partIds ?? []} onPick={pickPart} />
+            selectionIds={selection?.partIds ?? []} onPick={pickPart} onMoveExtra={(id, x, z) => c.updateExtra(id, { x, z })} />
           {selection && (
             <div className="pointer-events-none absolute right-3 top-14 z-10">
               <SelectionEditor c={c} selection={selection} onClose={() => setPicked(null)} />

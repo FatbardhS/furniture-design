@@ -40,6 +40,7 @@ export function NumberInput({
   max = Infinity,
   step = 1,
   suffix,
+  decimalComma = false,
   className = '',
 }: {
   value: number;
@@ -48,12 +49,14 @@ export function NumberInput({
   max?: number;
   step?: number;
   suffix?: string;
+  /** Plain text field that also takes "4,5" (a number field drops the comma); arrow keys still step. */
+  decimalComma?: boolean;
   className?: string;
 }) {
   const [draft, setDraft] = useState(String(value));
   const [focused, setFocused] = useState(false);
   useEffect(() => {
-    if (!focused) setDraft(String(+value.toFixed(2)));
+    if (!focused) setDraft(decimalComma ? String(+value.toFixed(2)).replace('.', ',') : String(+value.toFixed(2)));
   }, [value, focused]);
 
   const commit = (raw: string) => {
@@ -64,7 +67,7 @@ export function NumberInput({
   return (
     <div className={`relative ${className}`}>
       <input
-        type="number"
+        type={decimalComma ? 'text' : 'number'}
         inputMode="decimal"
         className={`${inputCls} ${suffix ? 'pr-10' : ''}`}
         value={draft}
@@ -74,14 +77,22 @@ export function NumberInput({
         onFocus={() => setFocused(true)}
         onChange={(e) => {
           setDraft(e.target.value);
-          const n = parseFloat(e.target.value);
+          const n = parseFloat(e.target.value.replace(',', '.'));
           if (Number.isFinite(n) && n >= min && n <= max) onChange(n);
         }}
         onBlur={(e) => {
           setFocused(false);
           commit(e.target.value);
         }}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (decimalComma && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault();
+            const v = +Math.min(max, Math.max(min, value + (e.key === 'ArrowUp' ? step : -step))).toFixed(2);
+            setDraft(String(v).replace('.', ','));
+            onChange(v);
+          }
+        }}
       />
       {suffix && (
         <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-stone-400">{suffix}</span>
@@ -114,6 +125,11 @@ export function LengthInput({
       onChange={(v) => onChange(Math.round(fromUnit(v, unit)))}
     />
   );
+}
+
+/** Length input in metres (rooms are measured in whole and decimal metres); stores millimetres. */
+export function MeterInput({ mm, onChange, min = 0, max = 30000 }: { mm: number; onChange: (mm: number) => void; min?: number; max?: number }) {
+  return <NumberInput value={mm / 1000} min={min / 1000} max={max / 1000} step={0.1} suffix="m" decimalComma onChange={(v) => onChange(Math.round(v * 1000))} />;
 }
 
 export function Slider({ value, min, max, step = 1, onChange }: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {

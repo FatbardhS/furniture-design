@@ -140,6 +140,34 @@ export interface BedItem extends RoomItemBase {
 
 export type RoomItem = DresserItem | MirrorItem | BedItem;
 
+/** A wall of the room, seen from inside: back (behind the wardrobe), left, right, front. */
+export type WallSide = 'back' | 'left' | 'right' | 'front';
+
+/** A window or door cut into one wall. */
+export interface Opening {
+  id: string;
+  kind: 'window' | 'door';
+  wall: WallSide;
+  /** Distance from the wall's left end (seen from inside the room) to the opening's centre (mm). */
+  offset: number;
+  width: number;
+  height: number;
+  /** Height of the opening's bottom edge above the floor (0 for doors). */
+  sill: number;
+}
+
+/** The bedroom around the wardrobe: four walls, a floor and openings. */
+export interface RoomShell {
+  enabled: boolean;
+  /** Inner size of the room: along the back wall (x) and from it towards the front (z), mm. */
+  width: number;
+  length: number;
+  height: number;
+  /** Distance from the left wall to the wardrobe's left side, mm; the wardrobe backs onto the back wall. */
+  wardrobeX: number;
+  openings: Opening[];
+}
+
 export interface CabinetConfig {
   width: number;
   height: number;
@@ -168,6 +196,8 @@ export interface CabinetConfig {
   corner: CornerWing;
   /** Other bedroom furniture placed around the wardrobe. */
   extras: RoomItem[];
+  /** Walls around everything; missing in older saves. */
+  room?: RoomShell;
 }
 
 export type LaborMode = 'percent' | 'perM2' | 'fixed';
@@ -284,7 +314,9 @@ export interface WarningFocus {
   /** Room item the warning or selection is about. */
   extraId?: string;
   itemIds?: string[];
-  field?: 'depth' | 'height' | 'plinth' | 'sections' | 'doorCount' | 'corner';
+  field?: 'depth' | 'height' | 'plinth' | 'sections' | 'doorCount' | 'corner' | 'room';
+  /** Window / door of the room the warning is about. */
+  openingId?: string;
   /** Part / fixture ids to highlight in the 3D view. */
   partIds?: string[];
 }
