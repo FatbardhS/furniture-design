@@ -36,8 +36,11 @@ function load(): Saved | null {
   }
 }
 
-function withRoomSpace(cfg: CabinetConfig): CabinetConfig {
-  const extras = separateRoomItems(cfg);
+/** `cfg` with room items kept apart; items changed since `prev` are the ones that give way. */
+function withRoomSpace(cfg: CabinetConfig, prev?: CabinetConfig): CabinetConfig {
+  const before = new Map((prev?.extras ?? []).map((it) => [it.id, it]));
+  const changed = new Set((cfg.extras ?? []).filter((it) => before.get(it.id) !== it).map((it) => it.id));
+  const extras = separateRoomItems(cfg, changed);
   return extras === cfg.extras ? cfg : { ...cfg, extras };
 }
 
@@ -46,7 +49,7 @@ export function useConfigurator() {
   const [config, setRawConfig] = useState<CabinetConfig>(() => withRoomSpace(initial?.config ?? defaultConfig()));
   // Every change keeps room items clear of the wardrobe and of each other.
   const setConfig = (u: CabinetConfig | ((c: CabinetConfig) => CabinetConfig)) =>
-    setRawConfig((c) => withRoomSpace(typeof u === 'function' ? u(c) : u));
+    setRawConfig((c) => withRoomSpace(typeof u === 'function' ? u(c) : u, c));
   const [pricing, setPricing] = useState<PricingConfig>(initial?.pricing ?? defaultPricing);
   const [unit, setUnit] = useState<Unit>(initial?.unit ?? 'cm');
 

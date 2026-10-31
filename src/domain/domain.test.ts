@@ -419,6 +419,30 @@ describe('room walls', () => {
     expect([a.x, a.z]).toEqual([2000 - 250, 2750 - 200]); // pushed into the far corner
   });
 
+  it('never leaves room items on top of each other, and moves the one just dragged', () => {
+    const rect = (it: CabinetConfig['extras'][number]) => {
+      const { width, depth } = it as typeof night & { width: number };
+      return [it.x - width / 2, it.x + width / 2, it.z - depth / 2, it.z + depth / 2];
+    };
+    const apart = (p: CabinetConfig['extras'][number], q: typeof p) => {
+      const [a0, a1, b0, b1] = rect(p);
+      const [c0, c1, d0, d1] = rect(q);
+      return a1 <= c0 || c1 <= a0 || b1 <= d0 || d1 <= b0;
+    };
+    // Walls -2000..1200: right of the wardrobe there's room for one nightstand, and another is
+    // dropped on it. No spot along that wall is free, so it has to step out into the room.
+    const cfg = box({ room: room({ width: 3200 }), extras: [{ ...night, id: 'n', x: 900, z: -50 }, { ...night, id: 'd', x: 950, z: -50 }] });
+    const [n, d] = separateRoomItems(cfg, new Set(['d']));
+    expect(n).toBe(cfg.extras![0]); // the one already standing there keeps its place
+    expect(apart(n, d)).toBe(true);
+
+    // Dragging the first item onto the second moves the dragged one, not the other.
+    const drag = box({ extras: [{ ...night, id: 'p', x: 1600, z: -50 }, { ...night, id: 'q', x: 1600, z: -50 }] });
+    const [p, q] = separateRoomItems(drag, new Set(['p']));
+    expect(q).toBe(drag.extras![1]);
+    expect(apart(p, q)).toBe(true);
+  });
+
   it('warns about openings outside a wall or behind the wardrobe, and places new ones in free space', () => {
     const cfg = box({
       room: room({

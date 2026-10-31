@@ -385,11 +385,13 @@ function itemRect(cfg: CabinetConfig, it: RoomItem, pad = 0): Rect {
 const overlaps = (a: Rect, b: Rect) => a.x0 < b.x1 - 0.5 && b.x0 < a.x1 - 0.5 && a.z0 < b.z1 - 0.5 && b.z0 < a.z1 - 0.5;
 
 /**
- * Room items moved apart so none stands inside the wardrobe, the corner wing or another item.
- * Items are settled in list order; one that overlaps slides along its wall (x, or z when turned
- * sideways) to the nearest free spot. Returns `cfg.extras` itself when nothing had to move.
+ * Room items moved apart so none stands inside the wardrobe, the corner wing, a wall or another
+ * item. Items settle one at a time, those in `yielding` (just moved or resized) last, so the item
+ * being handled gives way instead of pushing the others about. One that overlaps goes to the
+ * nearest free spot, preferring to slide along its wall. Returns `cfg.extras` itself when nothing
+ * had to move.
  */
-export function separateRoomItems(cfg: CabinetConfig): RoomItem[] {
+export function separateRoomItems(cfg: CabinetConfig, yielding: ReadonlySet<string> = new Set()): RoomItem[] {
   const items = cfg.extras ?? [];
   const { width: W, depth: D } = cfg;
   // Fixed obstacles, already grown by the gap an item must keep from them.
@@ -401,38 +403,43 @@ export function separateRoomItems(cfg: CabinetConfig): RoomItem[] {
   }
 
   const walls = roomBounds(cfg);
-  let moved = false;
-  const out = items.map((orig) => {
+  const settled = new Map<string, RoomItem>();
+  const order = [...items.filter((it) => !yielding.has(it.id)), ...items.filter((it) => yielding.has(it.id))];
+  for (const orig of order) {
     // Inside the walls first: an item pushed against a wall stops there.
     const it = walls ? clampInto(itemRect(cfg, orig), orig, walls) : orig;
     const r = itemRect(cfg, it);
-    const inside = (x: number, z: number) =>
-      !walls || (r.x0 + x - it.x >= walls.x0 - 0.5 && r.x1 + x - it.x <= walls.x1 + 0.5 && r.z0 + z - it.z >= walls.z0 - 0.5 && r.z1 + z - it.z <= walls.z1 + 0.5);
+    const hx = (r.x1 - r.x0) / 2;
+    const hz = (r.z1 - r.z0) / 2;
     const blocked = (x: number, z: number) => {
-      const s = { x0: r.x0 + x - it.x, x1: r.x1 + x - it.x, z0: r.z0 + z - it.z, z1: r.z1 + z - it.z };
-      return !inside(x, z) || taken.some((t) => overlaps(s, t));
+      const s = { x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz };
+      if (walls && (s.x0 < walls.x0 - 0.5 || s.x1 > walls.x1 + 0.5 || s.z0 < walls.z0 - 0.5 || s.z1 > walls.z1 + 0.5)) return true;
+      // Nothing is pushed further back than the wardrobe's back wall (or than it already stands).
+      return s.z0 < Math.min(-D / 2, r.z0) - 0.5 || taken.some((t) => overlaps(s, t));
     };
     let best = { x: it.x, z: it.z };
     if (blocked(it.x, it.z)) {
-      // Spots just either side of each obstacle along the item's wall; take the nearest free one.
-      const alongX = it.rotation % 180 === 0;
-      const half = alongX ? (r.x1 - r.x0) / 2 : (r.z1 - r.z0) / 2;
-      const starts = alongX ? taken.flatMap((t) => [t.x0 - half, t.x1 + half]) : taken.flatMap((t) => [t.z0 - half, t.z1 + half]);
-      // Turned items stay in front of the back wall.
-      const minZ = -D / 2 + half;
-      const free = starts
-        .filter((c) => alongX || c >= minZ)
-        .map((c) => (alongX ? { x: c, z: it.z } : { x: it.x, z: c }))
-        .filter((p) => !blocked(p.x, p.z))
-        .sort((a, b) => Math.abs(a.x - it.x) + Math.abs(a.z - it.z) - (Math.abs(b.x - it.x) + Math.abs(b.z - it.z)));
-      if (free.length) best = { x: Math.round(free[0].x), z: Math.round(free[0].z) };
+      // Candidate spots just clear of every obstacle edge and against every wall, on both axes and
+      // combined, so an item boxed in along its wall can still step out the other way.
+      const xs = [it.x, ...taken.flatMap((t) => [t.x0 - hx, t.x1 + hx])];
+      const zs = [it.z, ...taken.flatMap((t) => [t.z0 - hz, t.z1 + hz])];
+      if (walls) xs.push(walls.x0 + hx, walls.x1 - hx), zs.push(walls.z0 + hz, walls.z1 - hz);
+      // Sliding along the wall the item backs onto is much preferred to walking away from it.
+      const [kx, kz] = it.rotation % 180 === 0 ? [1, 3] : [3, 1];
+      let bestCost = Infinity;
+      for (const x of xs)
+        for (const z of zs) {
+          const c = kx * Math.abs(x - it.x) + kz * Math.abs(z - it.z);
+          if (c < bestCost && !blocked(x, z)) (best = { x, z }), (bestCost = c);
+        }
+      best = { x: Math.round(best.x), z: Math.round(best.z) };
     }
     const placed = best.x === orig.x && best.z === orig.z ? orig : ({ ...orig, ...best } as RoomItem);
-    if (placed !== orig) moved = true;
+    settled.set(orig.id, placed);
     taken.push(itemRect(cfg, placed, ITEM_GAP));
-    return placed;
-  });
-  return moved ? out : items;
+  }
+  const out = items.map((it) => settled.get(it.id) ?? it);
+  return out.some((it, i) => it !== items[i]) ? out : items;
 }
 
 /** The item moved the least distance that puts its rectangle `r` inside the walls (centred if it can't fit). */

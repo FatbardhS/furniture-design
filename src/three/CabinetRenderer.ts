@@ -1018,7 +1018,39 @@ export class CabinetRenderer {
     for (const w of this.walls) w.group.visible = this.camera.position.clone().sub(w.point).dot(w.normal) > 0;
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
+    this.spreadLabels();
   };
+
+  /**
+   * Dimension labels that land on top of each other on screen (common on a phone, or seen from a
+   * side) are nudged apart vertically. The nudge is a CSS `translate`, which adds to the
+   * `transform` the label renderer sets, so it is recomputed from scratch every frame.
+   */
+  private spreadLabels() {
+    const els: HTMLElement[] = [];
+    this.dims.traverseVisible((o) => {
+      if (o instanceof CSS2DObject && o.element.style.display !== 'none') els.push(o.element);
+    });
+    const pad = 3;
+    const placed: DOMRect[] = [];
+    for (const el of els) {
+      const prev = Number(el.dataset.dy ?? 0);
+      const r = el.getBoundingClientRect();
+      const box = { x0: r.left, x1: r.right, y0: r.top - prev, y1: r.bottom - prev };
+      let dy = 0;
+      for (let i = 0; i < 12; i++) {
+        const hit = placed.find((p) => overlap(box.x0, box.x1, p.left, p.right) > 0 && overlap(box.y0 + dy - pad, box.y1 + dy + pad, p.top, p.bottom) > 0);
+        if (!hit) break;
+        // Step off the label it hits, towards the side its own centre is on.
+        dy = (box.y0 + box.y1) / 2 < (hit.top + hit.bottom) / 2 ? hit.top - pad - box.y1 : hit.bottom + pad - box.y0;
+      }
+      if (dy !== prev) {
+        el.style.translate = dy ? `0 ${dy}px` : '';
+        el.dataset.dy = String(dy);
+      }
+      placed.push(new DOMRect(box.x0, box.y0 + dy, box.x1 - box.x0, box.y1 - box.y0));
+    }
+  }
 }
 
 /** Deterministic per-part texture offset so neighbouring panels don't show identical grain. */
