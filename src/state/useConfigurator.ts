@@ -103,7 +103,10 @@ export function useConfigurator() {
       const free = Math.max(0, next.width - cfg.width);
       if ('width' in p && !('wardrobeX' in p) && Math.abs(prev.wardrobeX - (prev.width - cfg.width) / 2) <= 1) next.wardrobeX = Math.round(free / 2);
       next.wardrobeX = Math.min(next.wardrobeX, free);
-      return { ...cfg, room: next };
+      // Room items are placed relative to the wardrobe: when it slides along the wall they stay put in the room.
+      const dx = 'wardrobeX' in p ? next.wardrobeX - prev.wardrobeX : 0;
+      const extras = dx ? cfg.extras.map((it) => ({ ...it, x: it.x - dx })) : cfg.extras;
+      return { ...cfg, room: next, extras };
     });
   const mapOpenings = (f: (os: Opening[], r: RoomShell, cfg: CabinetConfig) => Opening[]) =>
     setConfig((cfg) => (cfg.room ? { ...cfg, room: { ...cfg.room, openings: f(cfg.room.openings, cfg.room, cfg) } } : cfg));

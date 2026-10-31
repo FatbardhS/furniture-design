@@ -15,6 +15,7 @@ export function Viewport({
   selectionIds,
   onPick,
   onMoveExtra,
+  onMoveWardrobe,
 }: {
   layout: Layout;
   config: CabinetConfig;
@@ -28,6 +29,8 @@ export function Viewport({
   onPick: (partId: string | null) => void;
   /** A room item was dragged to a new spot on the floor (mm). */
   onMoveExtra: (id: string, x: number, z: number) => void;
+  /** The selected wardrobe was dragged along the back wall: its new distance from the left wall (mm). */
+  onMoveWardrobe: (wardrobeX: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true });
@@ -60,8 +63,9 @@ export function Viewport({
     if (r) {
       r.onPick = onPick;
       r.onMoveExtra = onMoveExtra;
+      r.onMoveWardrobe = onMoveWardrobe;
     }
-  }, [onPick, onMoveExtra, rendererRef]);
+  }, [onPick, onMoveExtra, onMoveWardrobe, rendererRef]);
 
   const selectionKey = selectionIds.join('|');
   useEffect(() => {
@@ -108,7 +112,7 @@ export function Viewport({
       </div>
 
       <div className="pointer-events-none absolute bottom-3 right-3 hidden text-[11px] text-stone-500 sm:block">
-        Tërhiq një mobilje për ta lëvizur · Kliko për ta vënë në qendër · Klik i dyfishtë për t’u afruar · Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
+        Tërhiq një mobilje për ta lëvizur · Zgjidh dollapin dhe tërhiqe përgjatë murit · Kliko për ta vënë në qendër · Klik i dyfishtë për t’u afruar · Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
       </div>
 
       {problems.length > 0 && (

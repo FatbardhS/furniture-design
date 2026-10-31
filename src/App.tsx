@@ -177,7 +177,8 @@ export default function App() {
 
         <main className="relative order-1 h-[55vh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
           <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} activeMessage={activeWarning?.message} focus={focus} onSelectWarning={selectWarning}
-            selectionIds={selection?.partIds ?? []} onPick={pickPart} onMoveExtra={(id, x, z) => c.updateExtra(id, { x, z })} />
+            selectionIds={selection?.partIds ?? []} onPick={pickPart} onMoveExtra={(id, x, z) => c.updateExtra(id, { x, z })}
+            onMoveWardrobe={(wardrobeX) => c.patchRoom({ wardrobeX })} />
           {selection && (
             <div className="pointer-events-none absolute right-3 top-14 z-10">
               <SelectionEditor c={c} selection={selection} onClose={() => setPicked(null)} />

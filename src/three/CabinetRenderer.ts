@@ -82,8 +82,16 @@ export class CabinetRenderer {
   onPick: ((partId: string | null) => void) | null = null;
   /** Called when a room item has been dragged to a new floor position (mm). */
   onMoveExtra: ((id: string, x: number, z: number) => void) | null = null;
+  /** Called when the wardrobe has been dragged along the back wall: its new distance from the left wall (mm). */
+  onMoveWardrobe: ((wardrobeX: number) => void) | null = null;
   /** The room item being dragged across the floor. */
   private drag: { id: string; group: THREE.Group; plane: THREE.Plane; grab: THREE.Vector3; moved: boolean } | null = null;
+  /** The wardrobe being dragged along the back wall, with everything that moves with it. */
+  private wardrobeDrag: { objects: [THREE.Object3D, number][]; plane: THREE.Plane; startX: number; dx: number; moved: boolean } | null = null;
+  /** How far the wardrobe may slide along the back wall (mm, from where it is now); null without walls. */
+  private wardrobeRange: { x: number; min: number; max: number } | null = null;
+  /** Left wall of the room in the last update (mm), to keep the room still on screen when it shifts. */
+  private roomX0: number | null = null;
   /** Walls, floor, windows and doors of the room. */
   private shell = new THREE.Group();
   /** Each wall with a point on its inner face and its inward normal, to hide the ones between camera and room. */
@@ -167,6 +175,13 @@ export class CabinetRenderer {
         this.pointerDown = { x: e.clientX, y: e.clientY, t: performance.now() };
         if (e.button !== 0) return;
         const hit = this.pick(e);
+        if (hit && this.wardrobeGrabbable(hit.id)) {
+          // The wardrobe is selected: grabbing any part of it slides the whole thing (with its wing) along the wall.
+          const objects = this.root.children.filter((o) => !o.name.startsWith('x:')).map((o) => [o, o.position.x] as [THREE.Object3D, number]);
+          this.wardrobeDrag = { objects, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y), startX: hit.point.x, dx: 0, moved: false };
+          this.controls.enabled = false;
+          return;
+        }
         const id = hit && /^x:([^:]+):/.exec(hit.id)?.[1];
         const group = id && this.placements.get(`x:${id}`);
         if (!hit || !id || !group) return;
@@ -182,6 +197,19 @@ export class CabinetRenderer {
       (e) => {
         const d = this.pointerDown;
         this.pointerDown = null;
+        const wd = this.wardrobeDrag;
+        if (wd) {
+          this.wardrobeDrag = null;
+          this.controls.enabled = true;
+          canvas.style.cursor = '';
+          if (wd.moved) {
+            // Put everything back; the new layout arrives with the config change.
+            for (const [o, x] of wd.objects) o.position.x = x;
+            this.dims.visible = this.view.showDimensions;
+            if (this.wardrobeRange) this.onMoveWardrobe?.(this.wardrobeRange.x + wd.dx);
+            return;
+          }
+        }
         const drag = this.drag;
         if (drag) {
           this.drag = null;
@@ -210,6 +238,23 @@ export class CabinetRenderer {
       { signal },
     );
     canvas.addEventListener('pointermove', (e) => {
+      const wd = this.wardrobeDrag;
+      const range = this.wardrobeRange;
+      if (wd && range && e.buttons & 1) {
+        const d = this.pointerDown;
+        if (!wd.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 5) return;
+        wd.moved = true;
+        canvas.style.cursor = 'grabbing';
+        // Measurements would be left behind; they come back with the new layout.
+        this.dims.visible = false;
+        this.setRay(e);
+        const at = this.raycaster.ray.intersectPlane(wd.plane, new THREE.Vector3());
+        if (!at) return;
+        // Along the wall only, in whole centimetres, never through the side walls.
+        wd.dx = THREE.MathUtils.clamp(Math.round((at.x - wd.startX) / MM / 10) * 10, range.min - range.x, range.max - range.x);
+        for (const [o, x] of wd.objects) o.position.x = x + wd.dx * MM;
+        return;
+      }
       const drag = this.drag;
       if (drag && e.buttons & 1) {
         const d = this.pointerDown;
@@ -223,7 +268,8 @@ export class CabinetRenderer {
       }
       if (e.buttons) return;
       const hit = this.pick(e);
-      canvas.style.cursor = hit ? (hit.id.startsWith('x:') ? 'grab' : 'pointer') : '';
+      const grabbable = hit && (hit.id.startsWith('x:') || this.wardrobeGrabbable(hit.id));
+      canvas.style.cursor = hit ? (grabbable ? 'grab' : 'pointer') : '';
     }, { signal });
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -265,6 +311,19 @@ export class CabinetRenderer {
 
     this.buildShell(cfg);
     this.buildDimensions(cfg, unit);
+    const r = cfg.room;
+    this.wardrobeRange = r?.enabled ? { x: r.wardrobeX, min: 0, max: Math.max(0, r.width - cfg.width) } : null;
+    // The wardrobe is the origin, so sliding it along the wall moves the room instead: the camera
+    // follows the room, so on screen the room stays still and the wardrobe is what moves.
+    const roomX0 = roomBounds(cfg)?.x0 ?? null;
+    if (roomX0 !== null && this.roomX0 !== null && roomX0 !== this.roomX0) {
+      const shift = new THREE.Vector3((roomX0 - this.roomX0) * MM, 0, 0);
+      this.camera.position.add(shift);
+      this.controls.target.add(shift);
+      this.lastCenter.add(shift);
+      if (this.focusGoal) this.focusGoal.target.add(shift), this.focusGoal.position.add(shift);
+    }
+    this.roomX0 = roomX0;
     this.pruneMaterials();
     this.applyVisibility();
 
@@ -312,6 +371,14 @@ export class CabinetRenderer {
     const dist = THREE.MathUtils.clamp(offset.length() * zoom, this.controls.minDistance, this.controls.maxDistance);
     offset.setLength(dist);
     this.focusGoal = { target: point.clone(), position: point.clone().add(offset) };
+  }
+
+  /**
+   * Whether pressing on this part starts sliding the wardrobe: only inside a room, and only once
+   * something on the wardrobe is selected, so dragging across it otherwise still turns the view.
+   */
+  private wardrobeGrabbable(id: string) {
+    return !!this.wardrobeRange && !id.startsWith('x:') && [...this.selected].some((s) => !s.startsWith('x:'));
   }
 
   /** Nearest visible part or fixture under the pointer, with the exact point that was hit. */
