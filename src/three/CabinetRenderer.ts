@@ -87,9 +87,13 @@ export class CabinetRenderer {
   /** The room item being dragged across the floor. */
   private drag: { id: string; group: THREE.Group; plane: THREE.Plane; grab: THREE.Vector3; moved: boolean } | null = null;
   /** The wardrobe being dragged along the back wall, with everything that moves with it. */
-  private wardrobeDrag: { objects: [THREE.Object3D, number][]; plane: THREE.Plane; startX: number; dx: number; moved: boolean } | null = null;
+  private wardrobeDrag: { objects: [THREE.Object3D, number][]; line: THREE.Vector3; startX: number; dx: number; moved: boolean } | null = null;
   /** How far the wardrobe may slide along the back wall (mm, from where it is now); null without walls. */
-  private wardrobeRange: { x: number; min: number; max: number } | null = null;
+  private wardrobeRange: { x: number; min: number; max: number; width: number; depth: number } | null = null;
+  /** The line along the back wall the selected wardrobe slides on, with its distances to the walls. */
+  private track = new THREE.Group();
+  private trackMaterial = new THREE.MeshBasicMaterial({ color: '#b07a48', transparent: true, opacity: 0.35, depthWrite: false });
+  private trackActiveMaterial = new THREE.MeshBasicMaterial({ color: '#b07a48', transparent: true, opacity: 0.9, depthWrite: false });
   /** Left wall of the room in the last update (mm), to keep the room still on screen when it shifts. */
   private roomX0: number | null = null;
   /** Walls, floor, windows and doors of the room. */
@@ -150,7 +154,7 @@ export class CabinetRenderer {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.shadowFloor = floor;
-    this.scene.add(floor, this.root, this.dims, this.shell);
+    this.scene.add(floor, this.root, this.dims, this.shell, this.track);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
@@ -178,7 +182,7 @@ export class CabinetRenderer {
         if (hit && this.wardrobeGrabbable(hit.id)) {
           // The wardrobe is selected: grabbing any part of it slides the whole thing (with its wing) along the wall.
           const objects = this.root.children.filter((o) => !o.name.startsWith('x:')).map((o) => [o, o.position.x] as [THREE.Object3D, number]);
-          this.wardrobeDrag = { objects, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y), startX: hit.point.x, dx: 0, moved: false };
+          this.wardrobeDrag = { objects, line: hit.point.clone(), startX: hit.point.x, dx: 0, moved: false };
           this.controls.enabled = false;
           return;
         }
@@ -206,7 +210,8 @@ export class CabinetRenderer {
             // Put everything back; the new layout arrives with the config change.
             for (const [o, x] of wd.objects) o.position.x = x;
             this.dims.visible = this.view.showDimensions;
-            if (this.wardrobeRange) this.onMoveWardrobe?.(this.wardrobeRange.x + wd.dx);
+            this.drawTrack(0, false);
+            if (this.wardrobeRange && wd.dx) this.onMoveWardrobe?.(this.wardrobeRange.x + wd.dx);
             return;
           }
         }
@@ -248,11 +253,16 @@ export class CabinetRenderer {
         // Measurements would be left behind; they come back with the new layout.
         this.dims.visible = false;
         this.setRay(e);
-        const at = this.raycaster.ray.intersectPlane(wd.plane, new THREE.Vector3());
-        if (!at) return;
-        // Along the wall only, in whole centimetres, never through the side walls.
-        wd.dx = THREE.MathUtils.clamp(Math.round((at.x - wd.startX) / MM / 10) * 10, range.min - range.x, range.max - range.x);
-        for (const [o, x] of wd.objects) o.position.x = x + wd.dx * MM;
+        // The point on the wall-parallel line through the grab point nearest the pointer's ray:
+        // works from any viewing angle, even looking along the floor.
+        const at = new THREE.Vector3();
+        this.raycaster.ray.distanceSqToSegment(wd.line.clone().setX(-100), wd.line.clone().setX(100), undefined, at);
+        // Along the wall only, in whole centimetres, never through the side walls; snaps to the walls and the middle.
+        let x = THREE.MathUtils.clamp(range.x + Math.round((at.x - wd.startX) / MM / 10) * 10, range.min, range.max);
+        for (const snap of [range.min, Math.round((range.min + range.max) / 2), range.max]) if (Math.abs(x - snap) <= 60) x = snap;
+        wd.dx = x - range.x;
+        for (const [o, ox] of wd.objects) o.position.x = ox + wd.dx * MM;
+        this.drawTrack(wd.dx, true);
         return;
       }
       const drag = this.drag;
@@ -312,7 +322,8 @@ export class CabinetRenderer {
     this.buildShell(cfg);
     this.buildDimensions(cfg, unit);
     const r = cfg.room;
-    this.wardrobeRange = r?.enabled ? { x: r.wardrobeX, min: 0, max: Math.max(0, r.width - cfg.width) } : null;
+    this.wardrobeRange = r?.enabled ? { x: r.wardrobeX, min: 0, max: Math.max(0, r.width - cfg.width), width: cfg.width, depth: cfg.depth } : null;
+    this.drawTrack(0, false);
     // The wardrobe is the origin, so sliding it along the wall moves the room instead: the camera
     // follows the room, so on screen the room stays still and the wardrobe is what moves.
     const roomX0 = roomBounds(cfg)?.x0 ?? null;
@@ -360,6 +371,47 @@ export class CabinetRenderer {
   setSelection(ids: string[]) {
     this.selected = new Set(ids);
     this.applyHighlight();
+    this.drawTrack(0, false);
+  }
+
+  /**
+   * While the wardrobe is selected in a room, a rail on the floor along the back wall shows the
+   * one line it can slide on, with the free space to each side wall. `dx` is the drag so far (mm).
+   */
+  private drawTrack(dx: number, dragging: boolean) {
+    for (const c of [...this.track.children]) {
+      c.removeFromParent();
+      if (c instanceof THREE.Mesh) c.geometry.dispose();
+    }
+    const r = this.wardrobeRange;
+    if (!r || !(dragging || this.wardrobeGrabbable(''))) return;
+    const x = r.x + dx;
+    const roomX0 = -r.width / 2 - r.x;
+    const left = -r.width / 2 + dx;
+    const z = (r.depth / 2 + 120) * MM;
+    const bar = (x0: number, x1: number, h: number, mat: THREE.Material) => {
+      if (x1 - x0 < 1) return;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry((x1 - x0) * MM, h * MM), mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(((x0 + x1) / 2) * MM, 0.004, z);
+      m.renderOrder = 2;
+      this.track.add(m);
+    };
+    bar(roomX0, roomX0 + r.max + r.width, 24, this.trackMaterial);
+    bar(left, left + r.width, 40, this.trackActiveMaterial);
+    const label = (atX: number, text: string, strong = false) => {
+      const el = document.createElement('div');
+      el.className = strong ? 'move-label move-label-strong' : 'move-label';
+      el.textContent = text;
+      const o = new CSS2DObject(el);
+      o.position.set(atX * MM, 0.004, z + (strong ? 0.4 : 0.14));
+      this.track.add(o);
+    };
+    const mid = Math.round((r.min + r.max) / 2);
+    // No label for a gap that isn't there: the rail ending at the wall says it.
+    if (x > 0) label((roomX0 + left) / 2, `← ${fmtM(x)}`);
+    if (x < r.max) label(left + r.width + (r.max - x) / 2, `${fmtM(r.max - x)} →`);
+    label(left + r.width / 2, x === mid && r.max > 0 ? '⟷ në mes' : '⟷', true);
   }
 
   /**
@@ -433,6 +485,8 @@ export class CabinetRenderer {
     this.selectMat.dispose();
     this.events.abort();
     this.controls.dispose();
+    this.trackMaterial.dispose();
+    this.trackActiveMaterial.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.labels.domElement.remove();

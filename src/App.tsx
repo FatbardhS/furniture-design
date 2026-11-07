@@ -94,6 +94,16 @@ export default function App() {
         }
         return;
       }
+      // The wardrobe itself: left / right slide it along the back wall, 10 cm (Shift: 1 cm).
+      if ((sel?.kind === 'door' || sel?.kind === 'carcass') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const r = cfg.config.room;
+        if (!r?.enabled) return;
+        e.preventDefault();
+        const step = (e.shiftKey ? 10 : 100) * (e.key === 'ArrowLeft' ? -1 : 1);
+        const free = Math.max(0, r.width - cfg.config.width);
+        cfg.patchRoom({ wardrobeX: Math.min(free, Math.max(0, r.wardrobeX + step)) });
+        return;
+      }
       if (sel?.kind !== 'item') return;
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();

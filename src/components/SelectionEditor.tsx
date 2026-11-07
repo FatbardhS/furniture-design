@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { DEFAULT_DRAWER_HEIGHT } from '../domain/interior';
 import { columnDoors } from '../domain/layout';
 import { ROOM_LABELS } from '../domain/room';
+import { fmtM } from '../domain/shell';
 import type { Selection } from '../domain/selection';
 import type { InteriorItem, RoomItem } from '../domain/types';
 import type { Configurator } from '../state/useConfigurator';
@@ -194,6 +195,7 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
           ×
         </button>
       </div>
+      {selection.kind !== 'extra' && selection.kind !== 'item' && <WallPosition c={c} />}
       {body}
       {selection.kind === 'door' && (
         <div className="space-y-1 border-t border-stone-100 pt-2">
@@ -201,6 +203,47 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
           <DoorStylePicker c={c} doorId={selection.part.id} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Slide the wardrobe along the back wall: the same single line the 3D drag follows. */
+function WallPosition({ c }: { c: Configurator }) {
+  const r = c.config.room;
+  if (!r?.enabled) return null;
+  const free = Math.max(0, r.width - c.config.width);
+  const x = Math.min(r.wardrobeX, free);
+  const mid = Math.round(free / 2);
+  const move = (v: number) => c.patchRoom({ wardrobeX: Math.min(free, Math.max(0, Math.round(v))) });
+  return (
+    <div className="space-y-1.5 rounded-lg bg-stone-50 p-2">
+      <div className="flex items-baseline justify-between gap-2 text-[11px]">
+        <span className="font-medium text-stone-600">Pozicioni në murin prapa</span>
+        <span className="tabular-nums text-stone-500">
+          ← {fmtM(x)} · {fmtM(free - x)} →
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Button onClick={() => move(x - 100)} disabled={x <= 0} title="10 cm majtas">
+          ‹
+        </Button>
+        <Slider value={x} min={0} max={free} step={10} onChange={move} />
+        <Button onClick={() => move(x + 100)} disabled={x >= free} title="10 cm djathtas">
+          ›
+        </Button>
+      </div>
+      <Segmented
+        value={x === 0 ? 0 : x === free ? 2 : x === mid ? 1 : -1}
+        options={[
+          { value: 0, label: 'Majtas' },
+          { value: 1, label: 'Në mes' },
+          { value: 2, label: 'Djathtas' },
+        ]}
+        onChange={(v) => move(v === 0 ? 0 : v === 2 ? free : mid)}
+      />
+      <p className="text-[10px] text-stone-400">
+        Tërhiqe dollapin në 3D majtas–djathtas<span className="max-lg:hidden"> · ← → 10 cm, Shift 1 cm</span>
+      </p>
     </div>
   );
 }
