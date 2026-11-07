@@ -25,6 +25,8 @@ export default function App() {
   const rendererRef = useRef<CabinetRenderer | null>(null);
   const [left, setLeft] = useState<LeftTab>('size');
   const [right, setRight] = useState<RightTab>('quote');
+  // Phones show one panel at a time under the 3D view: the design tabs or the quote tabs.
+  const [mobilePane, setMobilePane] = useState<'design' | 'quote'>('design');
   const [exporting, setExporting] = useState(false);
 
   // The warning the user clicked. Keyed by message so it clears itself once the problem is fixed.
@@ -123,14 +125,14 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-2.5">
+    <div className="flex h-dvh flex-col">
+      <header className="flex items-center gap-2 border-b border-stone-200 bg-white px-3 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
         <div className="flex items-center gap-2">
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-stone-900 text-white">
             <Icon name="door" className="h-4.5 w-4.5" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold">Closet Studio</div>
+            <div className="whitespace-nowrap text-sm font-semibold">Closet Studio</div>
             <div className="hidden text-[11px] text-stone-500 sm:block">Konfigurues 3D i dollapëve & llogaritës i kostos</div>
           </div>
         </div>
@@ -139,7 +141,7 @@ export default function App() {
             <div className="text-[10px] uppercase tracking-wider text-stone-500">Totali</div>
             <div className="text-sm font-semibold tabular-nums">{formatMoney(c.quote.grandTotal, c.pricing.currency)}</div>
           </div>
-          <div className="w-24">
+          <div className="w-20 sm:w-24">
             <Segmented value={c.unit} options={[{ value: 'mm', label: 'mm' }, { value: 'cm', label: 'cm' }]} onChange={c.setUnit} />
           </div>
           <Button variant="ghost" onClick={resetAll} title="Rikthe vlerat fillestare">
@@ -148,13 +150,37 @@ export default function App() {
           </Button>
           <Button variant="primary" onClick={exportPdf} disabled={exporting}>
             <Icon name="download" />
-            {exporting ? 'Duke eksportuar…' : 'Oferta PDF'}
+            {exporting ? (
+              'Duke eksportuar…'
+            ) : (
+              <span>
+                <span className="hidden sm:inline">Oferta </span>PDF
+              </span>
+            )}
           </Button>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto lg:flex-row lg:overflow-hidden">
-        <aside className="order-2 flex flex-col border-stone-200 bg-white lg:order-1 lg:w-[340px] lg:shrink-0 lg:border-r">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        <div className="order-2 flex items-center gap-2 border-y border-stone-200 bg-stone-50 px-3 py-1.5 lg:hidden">
+          <div className="w-44">
+            <Segmented
+              value={mobilePane}
+              options={[{ value: 'design', label: 'Dizajni' }, { value: 'quote', label: 'Oferta' }]}
+              onChange={setMobilePane}
+            />
+          </div>
+          <div className="ml-auto text-right leading-tight">
+            <div className="text-[10px] uppercase tracking-wider text-stone-500">Totali</div>
+            <div className="text-sm font-semibold tabular-nums">{formatMoney(c.quote.grandTotal, c.pricing.currency)}</div>
+          </div>
+        </div>
+
+        <aside
+          className={`order-3 min-h-0 flex-1 flex-col border-stone-200 bg-white lg:order-1 lg:flex lg:w-[340px] lg:flex-none lg:border-r ${
+            mobilePane === 'design' ? 'flex' : 'hidden'
+          }`}
+        >
           <Tabs<LeftTab>
             value={left}
             onChange={setLeft}
@@ -175,18 +201,22 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="relative order-1 h-[55vh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
+        <main className="relative order-1 h-[42dvh] shrink-0 lg:order-2 lg:h-auto lg:min-w-0 lg:flex-1">
           <Viewport layout={c.layout} config={c.config} unit={c.unit} rendererRef={rendererRef} activeMessage={activeWarning?.message} focus={focus} onSelectWarning={selectWarning}
             selectionIds={selection?.partIds ?? []} onPick={pickPart} onMoveExtra={(id, x, z) => c.updateExtra(id, { x, z })}
             onMoveWardrobe={(wardrobeX) => c.patchRoom({ wardrobeX })} />
           {selection && (
-            <div className="pointer-events-none absolute right-3 top-14 z-10">
+            <div className="fixed inset-x-0 bottom-0 z-30 lg:pointer-events-none lg:absolute lg:inset-x-auto lg:bottom-auto lg:right-3 lg:top-14 lg:z-10">
               <SelectionEditor c={c} selection={selection} onClose={() => setPicked(null)} />
             </div>
           )}
         </main>
 
-        <aside className="order-3 flex flex-col border-t border-stone-200 bg-white lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0">
+        <aside
+          className={`order-3 min-h-0 flex-1 flex-col border-stone-200 bg-white lg:flex lg:w-[380px] lg:flex-none lg:border-l ${
+            mobilePane === 'quote' ? 'flex' : 'hidden'
+          }`}
+        >
           <Tabs<RightTab>
             value={right}
             onChange={setRight}

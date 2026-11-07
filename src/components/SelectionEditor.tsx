@@ -184,13 +184,13 @@ export function SelectionEditor({ c, selection, onClose }: { c: Configurator; se
   }
 
   return (
-    <div className="pointer-events-auto w-80 max-w-[calc(100vw-24px)] space-y-2.5 rounded-xl border border-blue-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+    <div className="pointer-events-auto max-h-[52dvh] w-full space-y-2.5 overflow-y-auto rounded-t-2xl border-t border-blue-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.12)] scrollbar-thin lg:max-h-none lg:w-80 lg:max-w-[calc(100vw-24px)] lg:overflow-visible lg:rounded-xl lg:border lg:bg-white/95 lg:pb-3 lg:shadow-lg lg:backdrop-blur">
       <div className="flex items-center gap-2">
         <span className="grid h-6 w-6 place-items-center rounded-md bg-blue-100 text-blue-700">
           <Icon name={icon} className="h-3.5 w-3.5" />
         </span>
         <span className="flex-1 text-xs font-semibold text-stone-800">{title}</span>
-        <button onClick={onClose} className="rounded px-1.5 text-sm text-stone-400 hover:bg-stone-100 hover:text-stone-700" title="Mbyll (Esc)">
+        <button onClick={onClose} className="rounded px-1.5 text-sm text-stone-400 hover:bg-stone-100 hover:text-stone-700" title="Mbyll (Esc)" aria-label="Mbyll">
           ×
         </button>
       </div>

@@ -34,7 +34,7 @@ export function Viewport({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ doorsOpen: false, drawersOpen: false, showFronts: true, showDimensions: true });
-  const [showWarnings, setShowWarnings] = useState(true);
+  const [showWarnings, setShowWarnings] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1024);
 
   useEffect(() => {
     const r = new CabinetRenderer(host.current!);
@@ -87,10 +87,10 @@ export function Viewport({
   const errors = problems.filter((w) => w.level === 'error').length;
 
   return (
-    <div className="relative h-full min-h-[360px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,#ffffff_0%,#efedea_55%,#e2dfdb_100%)]">
+    <div className="relative h-full min-h-[240px] lg:min-h-[360px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,#ffffff_0%,#efedea_55%,#e2dfdb_100%)]">
       <div ref={host} className="absolute inset-0" />
 
-      <div className="absolute left-3 right-3 top-3 flex flex-wrap items-center gap-1.5">
+      <div className="absolute left-3 right-3 top-3 flex items-center gap-1.5 sm:flex-wrap">
         <Toggle
           label={hasDoors ? (view.doorsOpen ? 'Mbyll dyert' : 'Hap dyert') : 'Pa dyer'}
           icon={<Icon name="door" />}
@@ -107,11 +107,11 @@ export function Viewport({
         <Toggle label="Fshih dyert" icon={<Icon name="eye" />} checked={!view.showFronts} onChange={(v) => set({ showFronts: !v })} />
         <Toggle label="Përmasat" icon={<Icon name="ruler" />} checked={view.showDimensions} onChange={(v) => set({ showDimensions: v })} />
         <Button variant="secondary" className="ml-auto bg-white/90" onClick={() => rendererRef.current?.resetCamera()} title="Rikthe kamerën">
-          <Icon name="reset" /> Rikthe pamjen
+          <Icon name="reset" /> <span className="max-sm:sr-only">Rikthe pamjen</span>
         </Button>
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 right-3 hidden text-[11px] text-stone-500 sm:block">
+      <div className="pointer-events-none absolute bottom-3 right-3 hidden text-[11px] text-stone-500 lg:block">
         Tërhiq një mobilje për ta lëvizur · Zgjidh dollapin dhe tërhiqe përgjatë murit · Kliko për ta vënë në qendër · Klik i dyfishtë për t’u afruar · Tërhiq për ta rrotulluar · Klik i djathtë për ta zhvendosur · Rrota për zmadhim
       </div>
 
@@ -127,7 +127,7 @@ export function Viewport({
             {problems.length} vërejtje për kontroll
           </button>
           {showWarnings && (
-            <div className="max-h-48 overflow-auto rounded-b-lg rounded-tr-lg border border-stone-200 bg-white/95 p-1.5 text-xs shadow-sm scrollbar-thin">
+            <div className="max-h-28 overflow-auto sm:max-h-48 rounded-b-lg rounded-tr-lg border border-stone-200 bg-white/95 p-1.5 text-xs shadow-sm scrollbar-thin">
               <p className="px-1.5 pb-1 pt-0.5 text-[11px] text-stone-500">Kliko një vërejtje për të parë ku duhet rregulluar.</p>
               <ul className="space-y-0.5">
                 {problems.map((w, i) => {

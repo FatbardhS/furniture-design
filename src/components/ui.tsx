@@ -193,13 +193,16 @@ export function Toggle({ checked, onChange, label, icon }: { checked: boolean; o
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
+      title={label}
       onClick={() => onChange(!checked)}
       className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
         checked ? 'border-accent-500 bg-accent-50 text-accent-700' : 'border-stone-200 bg-white/90 text-stone-600 hover:border-stone-300'
       }`}
     >
       {icon}
-      {label}
+      {/* On phones a toggle with an icon shows only the icon, so the 3D view stays clear. */}
+      <span className={icon ? 'max-sm:sr-only' : undefined}>{label}</span>
     </button>
   );
 }
